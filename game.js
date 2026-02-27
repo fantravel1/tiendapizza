@@ -1952,12 +1952,30 @@ function setupCampaignButtons() {
 }
 
 function setupMainButtons() {
-  ui.startBtn.addEventListener("click", () => {
+  let lastTapMs = 0;
+  const bindTap = (button, handler) => {
+    const run = (event) => {
+      const now = performance.now();
+      if (event.type === "click" && now - lastTapMs < 260) {
+        return;
+      }
+      if (event.type === "pointerup") {
+        lastTapMs = now;
+      }
+      event.preventDefault();
+      handler();
+    };
+
+    button.addEventListener("pointerup", run);
+    button.addEventListener("click", run);
+  };
+
+  bindTap(ui.startBtn, () => {
     resetProgress(selectedCampaign);
     startShift(false);
   });
 
-  ui.continueBtn.addEventListener("click", () => {
+  bindTap(ui.continueBtn, () => {
     const save = loadGame();
     if (!save || !applySave(save)) {
       showToast("No se encontro una partida valida. Inicia una nueva partida.");
@@ -1968,7 +1986,7 @@ function setupMainButtons() {
     startShift(true);
   });
 
-  ui.soundBtn.addEventListener("click", () => {
+  bindTap(ui.soundBtn, () => {
     state.muted = !state.muted;
     updateSoundLabel();
     if (!state.muted) {

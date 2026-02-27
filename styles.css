@@ -25,7 +25,7 @@ body {
     radial-gradient(circle at 18% 14%, #ffd9ad 0%, transparent 34%),
     radial-gradient(circle at 84% 9%, #ffc88f 0%, transparent 30%),
     linear-gradient(160deg, var(--bg-a) 0%, var(--bg-b) 100%);
-  touch-action: none;
+  touch-action: manipulation;
 }
 
 body {
@@ -44,13 +44,14 @@ body {
 }
 
 .hud {
+  position: relative;
   display: grid;
   grid-template-columns: repeat(6, minmax(0, 1fr));
   gap: 0.28rem;
   padding: 0.42rem;
   background: #f7d9af;
   border-bottom: 3px solid var(--deep-red);
-  z-index: 10;
+  z-index: 30;
 }
 
 .hud-item {
@@ -76,6 +77,8 @@ body {
   position: relative;
   padding: 0.36rem;
   min-height: 0;
+  overflow: hidden;
+  z-index: 1;
 }
 
 #gameCanvas {
@@ -96,10 +99,11 @@ body {
   inset: 0.36rem;
   z-index: 20;
   display: grid;
-  place-items: center;
+  place-items: start center;
   background: rgba(30, 18, 9, 0.5);
   border-radius: 12px;
   padding: 0.5rem;
+  overflow: auto;
 }
 
 .overlay-card {
@@ -139,6 +143,7 @@ body {
   font-weight: 800;
   color: #fffaf0;
   background: linear-gradient(180deg, #b7602f 0%, #803f19 100%);
+  touch-action: manipulation;
 }
 
 .city-option.active {
@@ -178,6 +183,7 @@ body {
   font-size: 0.98rem;
   font-weight: 800;
   color: #fffaf0;
+  touch-action: manipulation;
 }
 
 .start-btn {
@@ -189,12 +195,13 @@ body {
 }
 
 .controls {
+  position: relative;
   display: grid;
   gap: 0.45rem;
   padding: 0.58rem;
   border-top: 3px solid #8f3d18;
   background: #f8d7a7;
-  z-index: 10;
+  z-index: 30;
 }
 
 .tap-hint {
