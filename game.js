@@ -90,8 +90,10 @@ const state = {
   businesses: 1,
   orders: [],
   customers: [],
+  droppedItems: [],
   orderId: 1,
   customerId: 1,
+  droppedItemId: 1,
   dayTimer: 0,
   spawnTimer: 0,
   adBoost: 0,
@@ -520,8 +522,10 @@ function resetProgress(cityKey = "usa") {
   state.businesses = 1;
   state.orders = [];
   state.customers = [];
+  state.droppedItems = [];
   state.orderId = 1;
   state.customerId = 1;
+  state.droppedItemId = 1;
   state.dayTimer = 0;
   state.spawnTimer = 0;
   state.adBoost = 0;
@@ -688,6 +692,88 @@ function findOvenById(id) {
   return state.ovens.find((oven) => oven.id === id) || null;
 }
 
+function findDroppedById(id) {
+  return state.droppedItems.find((item) => item.id === id) || null;
+}
+
+function nearestDroppedItem(maxDistance = interactRadius) {
+  let best = null;
+  let bestDistance = maxDistance;
+  for (const item of state.droppedItems) {
+    const dist = pointDistance(player.x, player.y, item.x, item.y);
+    if (dist <= bestDistance) {
+      bestDistance = dist;
+      best = item;
+    }
+  }
+  return best;
+}
+
+function dropCarryItem() {
+  if (!player.carry) {
+    showToast("No traes nada para soltar.");
+    sound.play("fail");
+    return false;
+  }
+
+  const dropOffset = player.facing === "left" ? -16 : player.facing === "right" ? 16 : 0;
+  const dropX = clamp(player.x + dropOffset, 24, getMaxReachX() - 24);
+  const dropY = clamp(player.y + 10, 24, WORLD.height - 24);
+
+  state.droppedItems.push({
+    id: state.droppedItemId,
+    x: dropX,
+    y: dropY,
+    stage: player.carry.stage
+  });
+  state.droppedItemId += 1;
+  player.carry = null;
+
+  showToast("Objeto soltado.");
+  sound.play("action");
+  markDirty();
+  return true;
+}
+
+function pickDroppedItem(item) {
+  if (!item) {
+    return false;
+  }
+  if (player.carry) {
+    showToast("Tienes las manos ocupadas.");
+    sound.play("fail");
+    return false;
+  }
+
+  player.carry = { stage: item.stage };
+  state.droppedItems = state.droppedItems.filter((entry) => entry.id !== item.id);
+  showToast("Objeto recogido.");
+  sound.play("success");
+  markDirty();
+  return true;
+}
+
+function useSelfDropOrPickup(quietIfNone = false) {
+  if (player.carry) {
+    return dropCarryItem();
+  }
+
+  const near = nearestDroppedItem();
+  if (near) {
+    return pickDroppedItem(near);
+  }
+
+  if (!quietIfNone) {
+    showToast("No hay objeto cercano para recoger.");
+    sound.play("fail");
+  }
+  return false;
+}
+
+function isTapOnPlayer(point) {
+  return pointDistance(point.x, point.y, player.x, player.y) <= 24;
+}
+
 function nearestInteractable() {
   let best = null;
   let bestDistance = Infinity;
@@ -713,6 +799,16 @@ function nearestInteractable() {
     if (dist < bestDistance) {
       bestDistance = dist;
       best = { kind: "oven", id: oven.id };
+    }
+  }
+
+  if (!player.carry) {
+    for (const item of state.droppedItems) {
+      const dist = pointDistance(player.x, player.y, item.x, item.y);
+      if (dist < bestDistance) {
+        bestDistance = dist;
+        best = { kind: "dropped", id: item.id };
+      }
     }
   }
 
@@ -743,6 +839,14 @@ function getInteractableCenter(token) {
     return ovenCenter(oven);
   }
 
+  if (token.kind === "dropped") {
+    const item = findDroppedById(token.id);
+    if (!item) {
+      return null;
+    }
+    return { x: item.x, y: item.y };
+  }
+
   return null;
 }
 
@@ -755,6 +859,13 @@ function distanceToInteractable(token) {
 }
 
 function findInteractableAt(x, y) {
+  for (let i = state.droppedItems.length - 1; i >= 0; i -= 1) {
+    const item = state.droppedItems[i];
+    if (pointDistance(x, y, item.x, item.y) <= 16) {
+      return { kind: "dropped", id: item.id };
+    }
+  }
+
   for (let i = state.stations.length - 1; i >= 0; i -= 1) {
     const station = state.stations[i];
     if (!isStationUnlocked(station)) {
@@ -1126,6 +1237,15 @@ function interactToken(token) {
 
   if (token.kind === "oven") {
     interactWithOven(findOvenById(token.id));
+    return;
+  }
+
+  if (token.kind === "dropped") {
+    const item = findDroppedById(token.id);
+    if (!item) {
+      return;
+    }
+    pickDroppedItem(item);
   }
 }
 
@@ -1562,6 +1682,22 @@ function drawDiningAreas() {
   }
 }
 
+function drawDroppedItems() {
+  for (const item of state.droppedItems) {
+    const p = worldToScreen(item.x, item.y);
+    if (item.stage === "dough") ctx.fillStyle = "#e8c188";
+    else if (item.stage === "sauce") ctx.fillStyle = "#d24536";
+    else if (item.stage === "cheese") ctx.fillStyle = "#f3db73";
+    else ctx.fillStyle = "#c57b36";
+
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, 5.8, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = "#4a2b0b";
+    ctx.stroke();
+  }
+}
+
 function drawCustomers() {
   for (const customer of state.customers) {
     if (zoneById(customer.zoneId).minBusinesses > state.businesses) {
@@ -1710,11 +1846,13 @@ function drawNearbyHint() {
         text = `${up.name} ($${up.cost})`;
       }
     }
-  } else {
+  } else if (nearest.kind === "oven") {
     const oven = findOvenById(nearest.id);
     if (oven) {
       text = `Toca: HORNO (Z${oven.zoneId})`;
     }
+  } else if (nearest.kind === "dropped") {
+    text = "Toca: OBJETO EN PISO";
   }
 
   ctx.fillStyle = "rgba(36, 20, 9, 0.88)";
@@ -1742,6 +1880,7 @@ function render() {
   drawZoneDecor();
   drawStations();
   drawDiningAreas();
+  drawDroppedItems();
   drawCustomers();
   drawPlayer();
   drawOrdersPanel();
@@ -1782,8 +1921,15 @@ function saveSnapshot() {
       eatTimer: customer.eatTimer,
       bob: customer.bob
     })),
+    droppedItems: state.droppedItems.map((item) => ({
+      id: item.id,
+      x: item.x,
+      y: item.y,
+      stage: item.stage
+    })),
     orderId: state.orderId,
     customerId: state.customerId,
+    droppedItemId: state.droppedItemId,
     dayTimer: state.dayTimer,
     spawnTimer: state.spawnTimer,
     adBoost: state.adBoost,
@@ -1868,6 +2014,7 @@ function applySave(data) {
   state.businesses = clampInt(data.businesses, 1, 12, 1);
   state.orderId = clampInt(data.orderId, 1, 2000000, 1);
   state.customerId = clampInt(data.customerId, 1, 2000000, 1);
+  state.droppedItemId = clampInt(data.droppedItemId, 1, 2000000, 1);
   state.dayTimer = clampNum(data.dayTimer, 0, 999, 0);
   state.spawnTimer = clampNum(data.spawnTimer, 0, 999, 0);
   state.adBoost = clampInt(data.adBoost, 0, 40, 0);
@@ -1955,6 +2102,15 @@ function applySave(data) {
     }));
   }
 
+  if (Array.isArray(data.droppedItems)) {
+    state.droppedItems = data.droppedItems.slice(0, 24).map((item, index) => ({
+      id: clampInt(item.id, 1, 9999999, state.droppedItemId + index),
+      x: clampNum(item.x, 24, getMaxReachX() - 24, player.x),
+      y: clampNum(item.y, 24, WORLD.height - 24, player.y),
+      stage: ["dough", "sauce", "cheese", "baked"].includes(item.stage) ? item.stage : "dough"
+    }));
+  }
+
   for (const customer of state.customers) {
     if (customer.state === "waiting" || customer.state === "eating") {
       const linkedOrder = state.orders.find((order) => order.id === customer.orderId);
@@ -2021,6 +2177,11 @@ function handleMapTap(event) {
   state.tapY = point.y;
   state.tapPulse = 1;
 
+  if (isTapOnPlayer(point)) {
+    useSelfDropOrPickup(false);
+    return;
+  }
+
   if (isDoubleTapAt(point)) {
     state.sprintBurstTimer = 1.5;
     sound.play("action");
@@ -2064,6 +2225,12 @@ function setupKeyboard() {
 
     if (key === " ") {
       event.preventDefault();
+      if (event.repeat) {
+        return;
+      }
+      if (useSelfDropOrPickup(true)) {
+        return;
+      }
       const nearest = nearestInteractable();
       if (nearest) {
         interactToken(nearest);
