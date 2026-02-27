@@ -4,11 +4,15 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>Pizza Rush: Sueno Inmigrante</title>
+  <meta name="description" content="Juego de pizzeria para celular: cocina, pedidos, publicidad y crecimiento de sucursales.">
+  <meta name="theme-color" content="#8d1e10">
+  <link rel="manifest" href="/manifest.webmanifest">
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
   <link rel="stylesheet" href="styles.css">
 </head>
 <body>
   <main class="app">
-    <header class="hud">
+    <header class="hud" aria-label="Indicadores del juego">
       <div class="hud-item"><span>Ciudad</span><strong id="cityLabel">Brooklyn, EE. UU.</strong></div>
       <div class="hud-item"><span>Dinero</span><strong id="moneyLabel">$40</strong></div>
       <div class="hud-item"><span>Dia</span><strong id="dayLabel">1</strong></div>
@@ -17,42 +21,42 @@
       <div class="hud-item"><span>Sucursales</span><strong id="shopsLabel">1</strong></div>
     </header>
 
-    <section class="playfield">
+    <section class="stage">
       <canvas id="gameCanvas" width="360" height="560" aria-label="Area del juego de pizzeria"></canvas>
-      <div id="toast" class="toast">Toca Iniciar Turno</div>
+      <div id="toast" class="toast">Toca el mapa para moverte</div>
 
-      <div id="startOverlay" class="start-overlay">
-        <div class="quick-guide">
+      <div id="startOverlay" class="start-overlay" role="dialog" aria-label="Inicio de juego">
+        <div class="overlay-card">
           <h1>Pizza Rush</h1>
-          <p>Llegaste desde Napoles. Elige donde empezara tu sueno.</p>
-          <ol>
-            <li>Toca cualquier parte del mapa para caminar hacia alla.</li>
-            <li>Toca una estacion para caminar automaticamente y usarla al llegar.</li>
-            <li>Entrega pedidos por zona, haz anuncios, compra mejoras y abre mas sucursales.</li>
-            <li>Con nivel de franquicia, se desbloquean nuevos mapas de sucursales por toda la ciudad.</li>
+          <p class="lead">Llegaste desde Napoles. Elige tu ciudad y abre tu primera pizzeria.</p>
+
+          <div class="city-picker" role="group" aria-label="Elige ciudad inicial">
+            <button class="city-option active" data-city="usa" type="button">EE. UU.: Brooklyn</button>
+            <button class="city-option" data-city="canada" type="button">Canada: Toronto</button>
+            <button class="city-option" data-city="mexico" type="button">Mexico: Monterrey</button>
+          </div>
+
+          <p id="cityDesc" class="city-desc">Campana equilibrada con crecimiento constante y presion de clientes.</p>
+
+          <ol class="guide">
+            <li>Toca cualquier punto para caminar hacia alla.</li>
+            <li>Toca una estacion para caminar y activarla al llegar.</li>
+            <li>Doble toque para sprint corto cuando necesites velocidad.</li>
+            <li>Cocina, entrega, anuncia y expande sucursales para crecer.</li>
           </ol>
-        </div>
 
-        <div class="city-picker" role="group" aria-label="Elige tu campana de ciudad">
-          <button class="city-option active" data-city="usa" type="button">EE. UU.: Brooklyn</button>
-          <button class="city-option" data-city="canada" type="button">Canada: Toronto</button>
-          <button class="city-option" data-city="mexico" type="button">Mexico: Monterrey</button>
-        </div>
-
-        <p id="cityDesc" class="city-desc">Campana equilibrada con crecimiento constante y presion de clientes.</p>
-
-        <div class="overlay-actions">
-          <button id="startBtn" class="start-btn" type="button">Nueva Partida</button>
-          <button id="continueBtn" class="continue-btn" type="button" hidden>Continuar Partida Guardada</button>
+          <div class="overlay-actions">
+            <button id="startBtn" class="start-btn" type="button">Nueva Partida</button>
+            <button id="continueBtn" class="continue-btn" type="button" hidden>Continuar Partida Guardada</button>
+          </div>
         </div>
       </div>
     </section>
 
     <section class="controls" aria-label="Controles tactiles">
-      <p class="tap-hint">Toca el mapa para moverte. Toca una estacion para actuar.</p>
+      <p class="tap-hint">Toca para moverte y actuar. Doble toque para sprint.</p>
       <div class="control-row">
-        <button id="dashBtn" class="dash">Sprint Auto: Apagado</button>
-        <button id="soundBtn" class="sound">Sonido Activo</button>
+        <button id="soundBtn" class="sound" type="button">Sonido Activo</button>
       </div>
     </section>
   </main>

@@ -2,7 +2,7 @@ const canvas = document.getElementById("gameCanvas");
 const ctx = canvas.getContext("2d", { alpha: true });
 ctx.imageSmoothingEnabled = false;
 
-const STORAGE_KEY = "pizzaRushSaveV3";
+const STORAGE_KEY = "pizzaRushSaveV4";
 
 const CAMPAIGNS = {
   usa: {
@@ -24,7 +24,7 @@ const CAMPAIGNS = {
     desc: "Ritmo mas tranquilo, clientes pacientes y mejor dinero inicial.",
     startCash: 55,
     spawnBase: 7.8,
-    patienceBoost: 7,
+    patienceBoost: 8,
     payoutMultiplier: 0.95,
     speedBonus: 0,
     tileA: "#d3c8a4",
@@ -36,7 +36,7 @@ const CAMPAIGNS = {
     city: "Monterrey, Mexico",
     desc: "Clientes mas rapidos, mejores pagos y caos temprano.",
     startCash: 36,
-    spawnBase: 6.5,
+    spawnBase: 6.4,
     patienceBoost: -4,
     payoutMultiplier: 1.12,
     speedBonus: 12,
@@ -48,7 +48,7 @@ const CAMPAIGNS = {
 
 const WORLD = {
   width: 2360,
-  height: 820,
+  height: 860,
   viewW: 360,
   viewH: 560,
   cameraX: 0,
@@ -57,128 +57,9 @@ const WORLD = {
 
 const ZONES = [
   { id: 1, name: "Mamma Mia", xMin: 0, xMax: 780, minBusinesses: 1, tint: "#cf7f46" },
-  { id: 2, name: "Fila de Horno de Ladrillo", xMin: 780, xMax: 1560, minBusinesses: 2, tint: "#905fbd" },
-  { id: 3, name: "Rebanada Imperial", xMin: 1560, xMax: 2360, minBusinesses: 3, tint: "#2b8f7e" }
+  { id: 2, name: "Fila de Horno de Ladrillo", xMin: 780, xMax: 1560, minBusinesses: 2, tint: "#8f60bb" },
+  { id: 3, name: "Rebanada Imperial", xMin: 1560, xMax: 2360, minBusinesses: 3, tint: "#2a8f7f" }
 ];
-
-const PIXEL_PALETTE = {
-  ".": "",
-  s: "#f3d7b8",
-  h: "#efefef",
-  r: "#c72c21",
-  b: "#2b4d9f",
-  n: "#1c2f67",
-  e: "#20160f",
-  p: "#e8c188",
-  t: "#b7402f",
-  y: "#f4db73",
-  o: "#ce8740",
-  g: "#48b35c",
-  k: "#2a1710",
-  w: "#f6ecd3",
-  c: "#7247a8",
-  m: "#91512b"
-};
-
-const SPRITES = {
-  chefDown: [
-    "....rrrr....",
-    "...rhhhhr...",
-    "...hsssssh..",
-    "..hseeeesh..",
-    "..hssssssh..",
-    "...hhhhhh...",
-    "...bbbbbb...",
-    "..bbbbbbbb..",
-    "..bbbnbbbb..",
-    "..bbbnbbbb..",
-    "...nn..nn...",
-    "...nn..nn..."
-  ],
-  chefUp: [
-    "....rrrr....",
-    "...rhhhhr...",
-    "...hsssssh..",
-    "..hssssssh..",
-    "..hssssssh..",
-    "...hhhhhh...",
-    "...bbbbbb...",
-    "..bbbbbbbb..",
-    "..bbbnbbbb..",
-    "..bbbnbbbb..",
-    "...nn..nn...",
-    "...nn..nn..."
-  ],
-  chefSide: [
-    "....rrrr....",
-    "...rhhhhr...",
-    "...hsssss...",
-    "..hseess....",
-    "..hsssss....",
-    "...hhhhh....",
-    "...bbbbb....",
-    "..bbbbbbb...",
-    "..bbbnbbb...",
-    "..bbbnbbb...",
-    "...nn.nn....",
-    "...nn.nn...."
-  ],
-  customerHappy: [
-    "...hhhh...",
-    "..hssssh..",
-    "..hseesh..",
-    "...hhhh...",
-    "...cccc...",
-    "..cccccc..",
-    "..cc..cc..",
-    "...n..n..."
-  ],
-  customerAngry: [
-    "...hhhh...",
-    "..hssssh..",
-    "..hseeeh..",
-    "...hhhh...",
-    "...mmmm...",
-    "..mmmmmm..",
-    "..mm..mm..",
-    "...n..n..."
-  ],
-  pizzaDough: [
-    "..pppp..",
-    ".pppppp.",
-    ".pppppp.",
-    ".pppppp.",
-    "..pppp.."
-  ],
-  pizzaSauce: [
-    "..pppp..",
-    ".pttttp.",
-    ".tttttt.",
-    ".pttttp.",
-    "..pppp.."
-  ],
-  pizzaCheese: [
-    "..pppp..",
-    ".pyyyyp.",
-    ".yyyyyy.",
-    ".pyyyyp.",
-    "..pppp.."
-  ],
-  pizzaBaked: [
-    "..oooo..",
-    ".otttto.",
-    ".tyyyyt.",
-    ".otttto.",
-    "..oooo.."
-  ],
-  iconDough: ["..pppp..", ".pppppp.", ".pppppp.", "..pppp.."],
-  iconSauce: ["..tttt..", ".tttttt.", ".tttttt.", "..tttt.."],
-  iconCheese: ["..yyyy..", ".yyyyyy.", ".yyyyyy.", "..yyyy.."],
-  iconCounter: ["..kkkk..", ".kwwwwk.", ".kwwwwk.", "..kkkk.."],
-  iconAds: ["..gggg..", ".gwwwwg.", ".gggggg.", "..gggg.."],
-  iconGrow: ["..gggg..", ".ggyggg.", ".gggggg.", "..gggg.."],
-  iconMop: ["...nn...", "...nn...", "..nwwn..", "..nwwn.."]
-};
 
 const ui = {
   city: document.getElementById("cityLabel"),
@@ -202,6 +83,8 @@ const state = {
   cityKey: "usa",
   city: CAMPAIGNS.usa.city,
   money: 0,
+  moneyDisplay: 0,
+  moneyTween: null,
   day: 1,
   stars: 5,
   businesses: 1,
@@ -239,6 +122,10 @@ const state = {
   muted: false,
   moveTarget: null,
   pendingInteract: null,
+  sprintBurstTimer: 0,
+  lastTapMs: 0,
+  lastTapX: 0,
+  lastTapY: 0,
   tapPulse: 0,
   tapX: 0,
   tapY: 0
@@ -253,7 +140,12 @@ const player = {
   carry: null
 };
 
-const interactRadius = 80;
+const interactRadius = 82;
+const OVEN_WIDTH = 72;
+const OVEN_HEIGHT = 54;
+const OVEN_HIT_RADIUS = 42;
+const DOUBLE_TAP_MS = 290;
+const DOUBLE_TAP_DISTANCE = 56;
 let selectedCampaign = "usa";
 let last = 0;
 
@@ -285,7 +177,7 @@ const sound = {
     }
   },
 
-  tone(freq, duration = 0.09, type = "square", gain = 0.35, slide = 0) {
+  tone(freq, duration = 0.08, type = "square", gain = 0.22, slide = 0) {
     if (state.muted) {
       return;
     }
@@ -301,7 +193,7 @@ const sound = {
     osc.type = type;
     osc.frequency.setValueAtTime(freq, now);
     if (slide !== 0) {
-      osc.frequency.linearRampToValueAtTime(Math.max(70, freq + slide), now + duration);
+      osc.frequency.linearRampToValueAtTime(Math.max(90, freq + slide), now + duration);
     }
 
     amp.gain.setValueAtTime(0.0001, now);
@@ -320,47 +212,38 @@ const sound = {
     }
 
     if (name === "action") {
-      this.tone(380, 0.05, "square", 0.18, -25);
+      this.tone(380, 0.05, "square", 0.16, -20);
       return;
     }
-
     if (name === "success") {
-      this.tone(460, 0.07, "triangle", 0.2, 70);
+      this.tone(450, 0.07, "triangle", 0.2, 80);
       setTimeout(() => this.tone(620, 0.08, "triangle", 0.2, 20), 45);
       return;
     }
-
     if (name === "fail") {
-      this.tone(220, 0.1, "sawtooth", 0.16, -60);
+      this.tone(220, 0.1, "sawtooth", 0.15, -55);
       return;
     }
-
     if (name === "order") {
-      this.tone(540, 0.06, "square", 0.18, 40);
+      this.tone(520, 0.06, "square", 0.18, 35);
       return;
     }
-
     if (name === "bake") {
-      this.tone(320, 0.08, "triangle", 0.18, 120);
+      this.tone(320, 0.08, "triangle", 0.17, 100);
       return;
     }
-
     if (name === "upgrade") {
-      this.tone(420, 0.08, "triangle", 0.2, 100);
-      setTimeout(() => this.tone(600, 0.08, "triangle", 0.2, 100), 55);
-      setTimeout(() => this.tone(780, 0.09, "triangle", 0.2, 100), 110);
+      this.tone(430, 0.08, "triangle", 0.18, 90);
+      setTimeout(() => this.tone(610, 0.08, "triangle", 0.18, 90), 55);
+      setTimeout(() => this.tone(780, 0.09, "triangle", 0.18, 90), 110);
       return;
     }
-
     if (name === "day") {
       this.tone(280, 0.08, "square", 0.16, 80);
       setTimeout(() => this.tone(420, 0.08, "square", 0.16, 80), 50);
       return;
     }
-
-    if (name === "ui") {
-      this.tone(500, 0.05, "triangle", 0.15, 35);
-    }
+    this.tone(500, 0.05, "triangle", 0.14, 30);
   }
 };
 
@@ -383,6 +266,12 @@ function markDirty() {
   state.saveDirty = true;
 }
 
+function buzz(ms = 14) {
+  if (navigator.vibrate) {
+    navigator.vibrate(ms);
+  }
+}
+
 function currentCampaign() {
   return CAMPAIGNS[state.cityKey] || CAMPAIGNS.usa;
 }
@@ -401,8 +290,8 @@ function getMaxReachX() {
   return lastZone.xMax;
 }
 
-function createStation(id, type, zoneId, x, y, w, h, color, label, sprite, minBusinesses) {
-  return { id, type, zoneId, x, y, w, h, color, label, sprite, minBusinesses };
+function createStation(id, type, zoneId, x, y, w, h, color, label, minBusinesses) {
+  return { id, type, zoneId, x, y, w, h, color, label, minBusinesses };
 }
 
 function createOven(id, zoneId, x, y, bakeTime, minBusinesses = 1) {
@@ -420,52 +309,33 @@ function createOven(id, zoneId, x, y, bakeTime, minBusinesses = 1) {
 }
 
 function buildStations() {
-  const result = [];
+  const stations = [];
 
   for (const zone of ZONES) {
-    const baseX = zone.xMin;
+    const x0 = zone.xMin;
     const minBusinesses = zone.minBusinesses;
 
-    result.push(createStation(`z${zone.id}-dough`, "dough", zone.id, baseX + 110, 208, 88, 66, "#f5d6a5", "MASA", "iconDough", minBusinesses));
-    result.push(createStation(`z${zone.id}-sauce`, "sauce", zone.id, baseX + 245, 208, 88, 66, "#cb4734", "SALSA", "iconSauce", minBusinesses));
-    result.push(createStation(`z${zone.id}-cheese`, "cheese", zone.id, baseX + 380, 208, 88, 66, "#f0ce5d", "QUESO", "iconCheese", minBusinesses));
-    result.push(createStation(`z${zone.id}-counter`, "counter", zone.id, baseX + 610, 196, 136, 78, "#7f5532", "MOSTR", "iconCounter", minBusinesses));
-    result.push(createStation(`z${zone.id}-mop`, "mop", zone.id, baseX + 520, 374, 114, 74, "#945c2d", "TRAPO", "iconMop", minBusinesses));
+    stations.push(createStation(`z${zone.id}-dough`, "dough", zone.id, x0 + 102, 220, 92, 70, "#f5d6a5", "MASA", minBusinesses));
+    stations.push(createStation(`z${zone.id}-sauce`, "sauce", zone.id, x0 + 238, 220, 92, 70, "#cb4734", "SALSA", minBusinesses));
+    stations.push(createStation(`z${zone.id}-cheese`, "cheese", zone.id, x0 + 374, 220, 92, 70, "#f0ce5d", "QUESO", minBusinesses));
+    stations.push(createStation(`z${zone.id}-counter`, "counter", zone.id, x0 + 600, 206, 146, 84, "#7f5532", "MOSTR", minBusinesses));
+    stations.push(createStation(`z${zone.id}-mop`, "mop", zone.id, x0 + 514, 388, 118, 76, "#8b562a", "TRAPO", minBusinesses));
 
     if (zone.id === 1) {
-      result.push(createStation("z1-ads", "ads", 1, baseX + 188, 374, 120, 74, "#205f95", "ANUN", "iconAds", 1));
-      result.push(createStation("z1-upgrade", "upgrade", 1, baseX + 336, 374, 150, 74, "#1f7f40", "CRECE", "iconGrow", 1));
+      stations.push(createStation("z1-ads", "ads", 1, x0 + 186, 388, 124, 76, "#225f95", "ANUN", 1));
+      stations.push(createStation("z1-upgrade", "upgrade", 1, x0 + 338, 388, 154, 76, "#1f7f40", "CRECE", 1));
     }
   }
 
-  return result;
+  return stations;
 }
 
 function buildBaseOvens() {
   return [
-    createOven("z1-main", 1, 510, 207, 4.8, 1),
-    createOven("z2-main", 2, 1290, 207, 4.6, 2),
-    createOven("z3-main", 3, 2070, 207, 4.4, 3)
+    createOven("z1-main", 1, 512, 226, 4.8, 1),
+    createOven("z2-main", 2, 1292, 226, 4.6, 2),
+    createOven("z3-main", 3, 2072, 226, 4.3, 3)
   ];
-}
-
-function isStationUnlocked(station) {
-  return station.minBusinesses <= state.businesses;
-}
-
-function isOvenUnlocked(oven) {
-  return oven.minBusinesses <= state.businesses;
-}
-
-function stationCenter(station) {
-  return {
-    x: station.x + station.w / 2,
-    y: station.y + station.h / 2
-  };
-}
-
-function ovenCenter(oven) {
-  return { x: oven.x, y: oven.y };
 }
 
 function buildUpgrades() {
@@ -500,7 +370,7 @@ function buildUpgrades() {
       apply: () => {
         if (!state.secondOvenUnlocked) {
           state.secondOvenUnlocked = true;
-          state.ovens.push(createOven("z1-second", 1, 690, 192, 3.9, 1));
+          state.ovens.push(createOven("z1-second", 1, 688, 226, 3.9, 1));
         }
       }
     },
@@ -513,7 +383,7 @@ function buildUpgrades() {
         state.passiveIncome += 4;
         state.maxOrders += 2;
         if (state.businesses > before) {
-          showToast("Segunda sucursal desbloqueada: Fila de Horno de Ladrillo.", 2.3);
+          showToast("Segunda sucursal desbloqueada.", 2.3);
         }
       }
     },
@@ -525,9 +395,9 @@ function buildUpgrades() {
         state.businesses = Math.max(state.businesses, 3);
         state.passiveIncome += 7;
         state.maxOrders += 2;
-        state.orderSpawnBase = Math.max(3.6, state.orderSpawnBase - 0.5);
+        state.orderSpawnBase = Math.max(3.5, state.orderSpawnBase - 0.5);
         if (state.businesses > before) {
-          showToast("Tercera sucursal desbloqueada: Rebanada Imperial.", 2.3);
+          showToast("Tercera sucursal desbloqueada.", 2.3);
         }
       }
     },
@@ -536,10 +406,74 @@ function buildUpgrades() {
       cost: 520,
       apply: () => {
         state.payoutMultiplier += 0.1;
-        state.stars = clamp(state.stars + 0.25, 0.8, 5);
+        state.stars = clamp(state.stars + 0.24, 0.8, 5);
       }
     }
   ];
+}
+
+function isStationUnlocked(station) {
+  return station.minBusinesses <= state.businesses;
+}
+
+function isOvenUnlocked(oven) {
+  return oven.minBusinesses <= state.businesses;
+}
+
+function stationCenter(station) {
+  return {
+    x: station.x + station.w / 2,
+    y: station.y + station.h / 2
+  };
+}
+
+function ovenCenter(oven) {
+  return { x: oven.x, y: oven.y };
+}
+
+function setCampaignChoice(cityKey) {
+  selectedCampaign = CAMPAIGNS[cityKey] ? cityKey : "usa";
+  const campaign = CAMPAIGNS[selectedCampaign];
+
+  ui.cityOptions.forEach((btn) => {
+    btn.classList.toggle("active", btn.dataset.city === selectedCampaign);
+  });
+
+  ui.cityDesc.textContent = campaign.desc;
+  ui.startBtn.textContent = `Nueva Partida (${campaign.label})`;
+}
+
+function resizeCanvas() {
+  const rect = canvas.getBoundingClientRect();
+  const ratio = window.devicePixelRatio || 1;
+  canvas.width = Math.floor(rect.width * ratio);
+  canvas.height = Math.floor(rect.height * ratio);
+  ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
+  WORLD.viewW = rect.width;
+  WORLD.viewH = rect.height;
+}
+
+function updateDashLabel() {
+  if (!ui.dashBtn) {
+    return;
+  }
+  ui.dashBtn.textContent = `Sprint Auto: ${state.dashAuto ? "Encendido" : "Apagado"}`;
+}
+
+function updateSoundLabel() {
+  ui.soundBtn.textContent = state.muted ? "Sonido Apagado" : "Sonido Activo";
+}
+
+function updateHud() {
+  if (!state.moneyTween) {
+    state.moneyDisplay = state.money;
+  }
+  ui.city.textContent = state.city;
+  ui.money.textContent = `$${Math.floor(state.moneyDisplay)}`;
+  ui.day.textContent = String(state.day);
+  ui.rep.textContent = state.stars.toFixed(1);
+  ui.queue.textContent = `${state.orders.length}/${state.maxOrders}`;
+  ui.shops.textContent = String(state.businesses);
 }
 
 function resetProgress(cityKey = "usa") {
@@ -549,6 +483,8 @@ function resetProgress(cityKey = "usa") {
   state.cityKey = cityKey;
   state.city = campaign.city;
   state.money = campaign.startCash;
+  state.moneyDisplay = state.money;
+  state.moneyTween = null;
   state.day = 1;
   state.stars = 5;
   state.businesses = 1;
@@ -585,6 +521,10 @@ function resetProgress(cityKey = "usa") {
   state.saveDirty = false;
   state.moveTarget = null;
   state.pendingInteract = null;
+  state.sprintBurstTimer = 0;
+  state.lastTapMs = 0;
+  state.lastTapX = 0;
+  state.lastTapY = 0;
   state.tapPulse = 0;
   state.tapX = 0;
   state.tapY = 0;
@@ -596,6 +536,7 @@ function resetProgress(cityKey = "usa") {
   player.stamina = 1;
   player.carry = null;
 
+  ui.startOverlay.style.display = "grid";
   setCampaignChoice(cityKey);
   updateDashLabel();
   updateHud();
@@ -607,76 +548,59 @@ function showToast(text, seconds = 1.7) {
   state.messageTimer = seconds;
 }
 
-function buzz(ms = 16) {
-  if (navigator.vibrate) {
-    navigator.vibrate(ms);
-  }
+function startMoneyTween(target, duration = 0.58, delay = 0) {
+  const from = typeof state.moneyDisplay === "number" ? state.moneyDisplay : state.money;
+  state.moneyTween = {
+    from,
+    to: target,
+    elapsed: 0,
+    duration: Math.max(0.12, duration),
+    delay: Math.max(0, delay)
+  };
 }
 
-function setCampaignChoice(cityKey) {
-  selectedCampaign = CAMPAIGNS[cityKey] ? cityKey : "usa";
-  const campaign = CAMPAIGNS[selectedCampaign];
-
-  ui.cityOptions.forEach((btn) => {
-    btn.classList.toggle("active", btn.dataset.city === selectedCampaign);
-  });
-
-  ui.cityDesc.textContent = campaign.desc;
-  ui.startBtn.textContent = `Nueva Partida (${campaign.label})`;
-}
-
-function resizeCanvas() {
-  const rect = canvas.getBoundingClientRect();
-  const ratio = window.devicePixelRatio || 1;
-  canvas.width = Math.floor(rect.width * ratio);
-  canvas.height = Math.floor(rect.height * ratio);
-  ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
-  WORLD.viewW = rect.width;
-  WORLD.viewH = rect.height;
-}
-
-function updateDashLabel() {
-  ui.dashBtn.textContent = `Sprint Auto: ${state.dashAuto ? "Encendido" : "Apagado"}`;
-}
-
-function updateSoundLabel() {
-  ui.soundBtn.textContent = state.muted ? "Sonido Apagado" : "Sonido Activo";
-}
-
-function updateHud() {
-  ui.city.textContent = state.city;
-  ui.money.textContent = `$${Math.floor(state.money)}`;
-  ui.day.textContent = String(state.day);
-  ui.rep.textContent = state.stars.toFixed(1);
-  ui.queue.textContent = `${state.orders.length}/${state.maxOrders}`;
-  ui.shops.textContent = String(state.businesses);
-}
-
-function drawPixelSprite(spriteRows, x, y, scale = 2, flipX = false) {
-  if (!spriteRows) {
+function updateMoneyTween(dt) {
+  if (!state.moneyTween) {
     return;
   }
 
-  const width = spriteRows[0].length;
-
-  for (let row = 0; row < spriteRows.length; row += 1) {
-    const rowData = spriteRows[row];
-    for (let col = 0; col < width; col += 1) {
-      const sourceCol = flipX ? width - 1 - col : col;
-      const key = rowData[sourceCol];
-      if (key === ".") {
-        continue;
-      }
-
-      const color = PIXEL_PALETTE[key];
-      if (!color) {
-        continue;
-      }
-
-      ctx.fillStyle = color;
-      ctx.fillRect(Math.round(x + col * scale), Math.round(y + row * scale), scale, scale);
-    }
+  state.moneyTween.elapsed += dt;
+  if (state.moneyTween.elapsed < state.moneyTween.delay) {
+    return;
   }
+
+  const time = state.moneyTween.elapsed - state.moneyTween.delay;
+  const t = clamp(time / state.moneyTween.duration, 0, 1);
+  const eased = 1 - (1 - t) ** 3;
+  state.moneyDisplay = state.moneyTween.from + (state.moneyTween.to - state.moneyTween.from) * eased;
+
+  if (t >= 1) {
+    state.moneyDisplay = state.moneyTween.to;
+    state.moneyTween = null;
+  }
+}
+
+function spawnMoneyFly(worldX, worldY, amount) {
+  const canvasRect = canvas.getBoundingClientRect();
+  const bankRect = ui.money.getBoundingClientRect();
+  const p = worldToScreen(worldX, worldY);
+
+  const startX = canvasRect.left + clamp(p.x, 0, canvasRect.width);
+  const startY = canvasRect.top + clamp(p.y, 0, canvasRect.height);
+  const endX = bankRect.left + bankRect.width / 2;
+  const endY = bankRect.top + bankRect.height / 2;
+
+  const chip = document.createElement("div");
+  chip.className = "money-fly";
+  chip.textContent = `+$${Math.floor(amount)}`;
+  chip.style.left = `${startX}px`;
+  chip.style.top = `${startY}px`;
+  chip.style.setProperty("--dx", `${endX - startX}px`);
+  chip.style.setProperty("--dy", `${endY - startY}px`);
+
+  document.body.appendChild(chip);
+  requestAnimationFrame(() => chip.classList.add("fly"));
+  setTimeout(() => chip.remove(), 900);
 }
 
 function worldToScreen(x, y) {
@@ -686,15 +610,15 @@ function worldToScreen(x, y) {
   };
 }
 
-function zonePedidos(zoneId) {
-  return state.orders.filter((order) => order.zoneId === zoneId);
-}
-
 function randomChoice(items) {
   if (!items.length) {
     return null;
   }
   return items[Math.floor(Math.random() * items.length)];
+}
+
+function pointDistance(ax, ay, bx, by) {
+  return Math.hypot(ax - bx, ay - by);
 }
 
 function getCounterStationForZone(zoneId) {
@@ -703,16 +627,20 @@ function getCounterStationForZone(zoneId) {
 
 function getZoneSpawnPoint(zoneId) {
   const zone = zoneById(zoneId);
-  return { x: zone.xMin + 42, y: 688 };
+  return { x: zone.xMin + 48, y: 724 };
 }
 
 function getZoneExitPoint(zoneId) {
   const zone = zoneById(zoneId);
-  return { x: zone.xMin + 20, y: 736 };
+  return { x: zone.xMin + 22, y: 778 };
 }
 
-function pointDistance(ax, ay, bx, by) {
-  return Math.hypot(ax - bx, ay - by);
+function findStationById(id) {
+  return state.stations.find((station) => station.id === id) || null;
+}
+
+function findOvenById(id) {
+  return state.ovens.find((oven) => oven.id === id) || null;
 }
 
 function nearestInteractable() {
@@ -723,9 +651,8 @@ function nearestInteractable() {
     if (!isStationUnlocked(station)) {
       continue;
     }
-
-    const center = stationCenter(station);
-    const dist = pointDistance(player.x, player.y, center.x, center.y);
+    const c = stationCenter(station);
+    const dist = pointDistance(player.x, player.y, c.x, c.y);
     if (dist < bestDistance) {
       bestDistance = dist;
       best = { kind: "station", id: station.id };
@@ -736,9 +663,8 @@ function nearestInteractable() {
     if (!isOvenUnlocked(oven)) {
       continue;
     }
-
-    const center = ovenCenter(oven);
-    const dist = pointDistance(player.x, player.y, center.x, center.y);
+    const c = ovenCenter(oven);
+    const dist = pointDistance(player.x, player.y, c.x, c.y);
     if (dist < bestDistance) {
       bestDistance = dist;
       best = { kind: "oven", id: oven.id };
@@ -748,16 +674,7 @@ function nearestInteractable() {
   if (!best || bestDistance > interactRadius) {
     return null;
   }
-
   return best;
-}
-
-function findStationById(id) {
-  return state.stations.find((station) => station.id === id) || null;
-}
-
-function findOvenById(id) {
-  return state.ovens.find((oven) => oven.id === id) || null;
 }
 
 function getInteractableCenter(token) {
@@ -810,7 +727,7 @@ function findInteractableAt(x, y) {
       continue;
     }
 
-    if (pointDistance(x, y, oven.x, oven.y) <= 34) {
+    if (pointDistance(x, y, oven.x, oven.y) <= OVEN_HIT_RADIUS) {
       return { kind: "oven", id: oven.id };
     }
   }
@@ -918,7 +835,7 @@ function runAdCampaign() {
   state.adBoost += 1;
   state.maxOrders += 1;
   spawnOrder(2);
-  showToast("Los anuncios estan funcionando. Llegan mas clientes.");
+  showToast("Los anuncios atraen mas clientes.");
   sound.play("success");
   buzz(12);
   markDirty();
@@ -939,16 +856,17 @@ function buyUpgrade() {
     return;
   }
 
-  const businessesBefore = state.businesses;
+  const before = state.businesses;
 
   state.money -= upgrade.cost;
   upgrade.apply();
   state.nextUpgrade += 1;
+
   showToast(`Desbloqueado: ${upgrade.name}`);
   sound.play("upgrade");
-  buzz(20);
+  buzz(18);
 
-  if (state.businesses > businessesBefore) {
+  if (state.businesses > before) {
     spawnOrder(2);
   }
 
@@ -973,18 +891,24 @@ function serveOrderAtCounter(zoneId) {
   const order = state.orders.splice(orderIndex, 1)[0];
   const tipRate = clamp(order.patience / order.maxPatience, 0, 1);
   const tip = Math.floor(tipRate * 8);
+
   state.combo = state.comboTimer > 0 ? Math.min(9, state.combo + 1) : 1;
   state.comboTimer = 8;
 
   const comboMultiplier = 1 + state.combo * 0.08;
   const payout = Math.floor((order.value + tip) * comboMultiplier);
 
+  const counter = getCounterStationForZone(zoneId);
+  const payoutPoint = counter ? stationCenter(counter) : { x: player.x, y: player.y };
+
   state.money += payout;
+  spawnMoneyFly(payoutPoint.x, payoutPoint.y, payout);
+  startMoneyTween(state.money, 0.56, 0.2);
   state.stars = clamp(state.stars + 0.05, 0.8, 5);
   player.carry = null;
   sendCustomerHome(order.id, false);
 
-  showToast(`Pedido entregado en Zona ${zoneId}! +$${payout} (${state.combo}x combo)`);
+  showToast("succes!");
   sound.play("success");
   buzz(14);
   markDirty();
@@ -1051,8 +975,7 @@ function interactWithStation(station) {
       return;
     }
 
-    const started = runAdCampaign();
-    if (started) {
+    if (runAdCampaign()) {
       state.adDeskCooldown = 18;
     }
     return;
@@ -1140,7 +1063,7 @@ function interactToken(token) {
   }
 }
 
-function syncCustomersWithPedidos() {
+function syncCustomersWithOrders() {
   const orderIds = new Set(state.orders.map((order) => order.id));
 
   for (let i = state.customers.length - 1; i >= 0; i -= 1) {
@@ -1163,13 +1086,13 @@ function syncCustomersWithPedidos() {
 
 function updateCustomerTargets() {
   for (const zone of getUnlockedZones()) {
-    const waitingPedidos = state.orders.filter((order) => order.zoneId === zone.id);
+    const waitingOrders = state.orders.filter((order) => order.zoneId === zone.id);
     const counter = getCounterStationForZone(zone.id);
     if (!counter) {
       continue;
     }
 
-    waitingPedidos.forEach((order, index) => {
+    waitingOrders.forEach((order, index) => {
       const customer = state.customers.find((entry) => entry.orderId === order.id && entry.state !== "leaving");
       if (!customer) {
         return;
@@ -1182,7 +1105,7 @@ function updateCustomerTargets() {
 }
 
 function updateCustomers(dt) {
-  syncCustomersWithPedidos();
+  syncCustomersWithOrders();
   updateCustomerTargets();
 
   for (let i = state.customers.length - 1; i >= 0; i -= 1) {
@@ -1204,15 +1127,16 @@ function updateCustomers(dt) {
 
     if (customer.state === "leaving") {
       const exit = getZoneExitPoint(customer.zoneId);
-      if (pointDistance(customer.x, customer.y, exit.x, exit.y) < 7) {
+      if (pointDistance(customer.x, customer.y, exit.x, exit.y) < 8) {
         state.customers.splice(i, 1);
       }
     }
   }
 }
 
-function updatePedidos(dt) {
-  const decay = 1 + state.rushLevel * 0.12;
+function updateOrders(dt) {
+  const earlyGrace = state.day <= 2 ? 0.72 : state.day <= 4 ? 0.86 : 1;
+  const decay = (1 + state.rushLevel * 0.12) * earlyGrace;
 
   for (let i = state.orders.length - 1; i >= 0; i -= 1) {
     const order = state.orders[i];
@@ -1229,6 +1153,13 @@ function updatePedidos(dt) {
       markDirty();
     }
   }
+}
+
+function currentSpawnRate() {
+  const ramp = clamp((state.day - 1) / 7, 0, 1);
+  const earlyBuffer = (1 - ramp) * 2.8;
+  const pressure = state.adBoost * 0.18 + state.day * 0.16 + state.businesses * 0.12;
+  return Math.max(2.8, state.orderSpawnBase + earlyBuffer - pressure);
 }
 
 function updateOvens(dt) {
@@ -1250,7 +1181,7 @@ function updateOvens(dt) {
   }
 }
 
-function updateDiaProgress(dt) {
+function updateDayProgress(dt) {
   state.dayTimer += dt;
   if (state.dayTimer < 44) {
     return;
@@ -1265,9 +1196,9 @@ function updateDiaProgress(dt) {
   }
 
   if (state.day === 4) {
-    showToast("La demanda sube. Sigue tocando estaciones rapido.", 2.4);
+    showToast("La demanda sube. Mantente en movimiento.", 2.3);
   } else if (state.day === 6) {
-    showToast("Turno de caos: hay derrames mas seguido.", 2.6);
+    showToast("Turno de caos: hay derrames mas seguido.", 2.4);
   } else {
     showToast(`Dia ${state.day}: la ciudad suena mas fuerte.`);
   }
@@ -1278,12 +1209,16 @@ function updateDiaProgress(dt) {
 }
 
 function updateSpills(dt) {
+  if (state.day < 3) {
+    return;
+  }
+
   state.spillTimer -= dt;
-  const hazardRate = state.day >= 6 ? 8 : 16;
+  const hazardRate = state.day >= 6 ? 8 : 14;
   if (state.spillTimer <= 0) {
     state.spillTimer = hazardRate + Math.random() * 7;
     state.spillActive = true;
-    showToast("Derrame de salsa! Toca la estacion de TRAPO para limpiar.", 2.1);
+    showToast("Derrame de salsa! Toca TRAPO para limpiar.", 2.1);
     sound.play("fail");
     markDirty();
   }
@@ -1318,11 +1253,11 @@ function movePlayerToward(dx, dy, dt) {
     speed *= 0.83;
   }
 
-  if (state.dashAuto && player.stamina > 0) {
-    speed *= 1.52;
-    player.stamina = clamp(player.stamina - dt * 0.55, 0, 1);
+  if (state.sprintBurstTimer > 0 && player.stamina > 0) {
+    speed *= 1.55;
+    player.stamina = clamp(player.stamina - dt * 0.6, 0, 1);
   } else {
-    player.stamina = clamp(player.stamina + dt * 0.24, 0, 1);
+    player.stamina = clamp(player.stamina + dt * 0.25, 0, 1);
   }
 
   const step = Math.min(dist, speed * dt);
@@ -1344,6 +1279,10 @@ function movePlayerToward(dx, dy, dt) {
 function updateMovement(dt) {
   let moving = false;
   const keyboardDir = updateMoveTargetFromKeyboard();
+
+  if (state.sprintBurstTimer > 0) {
+    state.sprintBurstTimer = Math.max(0, state.sprintBurstTimer - dt);
+  }
 
   if (keyboardDir) {
     state.moveTarget = null;
@@ -1369,7 +1308,7 @@ function updateMovement(dt) {
       }
     }
   } else {
-    player.stamina = clamp(player.stamina + dt * 0.24, 0, 1);
+    player.stamina = clamp(player.stamina + dt * 0.25, 0, 1);
   }
 
   state.moving = moving;
@@ -1400,8 +1339,8 @@ function drawStreetTiles() {
   }
 
   ctx.fillStyle = campaign.grass;
-  ctx.fillRect(-WORLD.cameraX, -WORLD.cameraY, WORLD.width, 120);
-  ctx.fillRect(-WORLD.cameraX, 560 - WORLD.cameraY, WORLD.width, 260);
+  ctx.fillRect(-WORLD.cameraX, -WORLD.cameraY, WORLD.width, 122);
+  ctx.fillRect(-WORLD.cameraX, 585 - WORLD.cameraY, WORLD.width, 300);
 }
 
 function drawZoneDecor() {
@@ -1409,26 +1348,26 @@ function drawZoneDecor() {
     const x = zone.xMin - WORLD.cameraX;
     const w = zone.xMax - zone.xMin;
 
-    ctx.fillStyle = "rgba(45, 27, 14, 0.25)";
-    ctx.fillRect(x + 2, 142 - WORLD.cameraY, w - 4, 8);
+    ctx.fillStyle = "rgba(45, 27, 14, 0.26)";
+    ctx.fillRect(x + 2, 154 - WORLD.cameraY, w - 4, 8);
 
     ctx.fillStyle = zone.tint;
-    ctx.fillRect(x + 60, 66 - WORLD.cameraY, 220, 36);
-    ctx.fillRect(x + 320, 66 - WORLD.cameraY, 210, 36);
-    ctx.fillRect(x + 570, 66 - WORLD.cameraY, 170, 36);
+    ctx.fillRect(x + 56, 74 - WORLD.cameraY, 230, 36);
+    ctx.fillRect(x + 326, 74 - WORLD.cameraY, 220, 36);
+    ctx.fillRect(x + 580, 74 - WORLD.cameraY, 166, 36);
 
-    ctx.fillStyle = "rgba(17, 10, 6, 0.65)";
-    ctx.fillRect(x + 12, 10 - WORLD.cameraY, 180, 28);
+    ctx.fillStyle = "rgba(16, 10, 6, 0.66)";
+    ctx.fillRect(x + 12, 12 - WORLD.cameraY, 200, 30);
     ctx.fillStyle = "#fff4dc";
     ctx.font = "bold 12px monospace";
-    ctx.fillText(`ZONA ${zone.id}: ${zone.name}`, x + 20, 28 - WORLD.cameraY);
+    ctx.fillText(`ZONA ${zone.id}: ${zone.name}`, x + 20, 31 - WORLD.cameraY);
 
     if (zone.minBusinesses > state.businesses) {
       ctx.fillStyle = "rgba(15, 10, 6, 0.56)";
       ctx.fillRect(x, -WORLD.cameraY, w, WORLD.height);
       ctx.fillStyle = "#ffe5a9";
       ctx.font = "bold 16px monospace";
-      ctx.fillText(`BLOQUEADA: ${zone.minBusinesses} SUCURSALES`, x + 180, 340 - WORLD.cameraY);
+      ctx.fillText(`BLOQUEADA: ${zone.minBusinesses} SUCURSALES`, x + 180, 350 - WORLD.cameraY);
     }
 
     if (zone.id > 1) {
@@ -1436,6 +1375,20 @@ function drawZoneDecor() {
       ctx.fillRect(x, -WORLD.cameraY, 2, WORLD.height);
     }
   }
+}
+
+function drawStationIcon(station, x, y) {
+  if (station.type === "dough") ctx.fillStyle = "#e8c188";
+  else if (station.type === "sauce") ctx.fillStyle = "#d24536";
+  else if (station.type === "cheese") ctx.fillStyle = "#f3dc75";
+  else if (station.type === "counter") ctx.fillStyle = "#efefe9";
+  else if (station.type === "ads") ctx.fillStyle = "#66b8ea";
+  else if (station.type === "upgrade") ctx.fillStyle = "#7cd58f";
+  else ctx.fillStyle = "#f3f3f3";
+
+  ctx.beginPath();
+  ctx.arc(x, y, 7, 0, Math.PI * 2);
+  ctx.fill();
 }
 
 function drawStations() {
@@ -1454,10 +1407,10 @@ function drawStations() {
 
     ctx.fillStyle = "#fff6de";
     ctx.font = "bold 11px monospace";
-    ctx.fillText(station.label, sx + 7, sy + 15);
+    ctx.fillText(station.label, sx + 8, sy + 15);
     ctx.fillText(`Z${station.zoneId}`, sx + station.w - 26, sy + 15);
 
-    drawPixelSprite(SPRITES[station.sprite], sx + station.w - 28, sy + 11, 2);
+    drawStationIcon(station, sx + station.w - 16, sy + 38);
 
     if (station.type === "upgrade" && state.nextUpgrade < state.upgrades.length) {
       const up = state.upgrades[state.nextUpgrade];
@@ -1474,26 +1427,33 @@ function drawStations() {
       continue;
     }
 
-    const x = oven.x - 30 - WORLD.cameraX;
-    const y = oven.y - 22 - WORLD.cameraY;
+    const x = oven.x - OVEN_WIDTH / 2 - WORLD.cameraX;
+    const y = oven.y - OVEN_HEIGHT / 2 - WORLD.cameraY;
 
     ctx.fillStyle = "#5f6c74";
-    ctx.fillRect(x, y, 60, 46);
+    ctx.fillRect(x, y, OVEN_WIDTH, OVEN_HEIGHT);
     ctx.strokeStyle = "#1e252a";
-    ctx.strokeRect(x, y, 60, 46);
+    ctx.strokeRect(x, y, OVEN_WIDTH, OVEN_HEIGHT);
 
     ctx.fillStyle = "#fff5df";
+    ctx.font = "bold 9px monospace";
+    ctx.fillText("HORNO", x + 14, y + 12);
     ctx.font = "bold 10px monospace";
-    ctx.fillText(`Z${oven.zoneId}`, x + 20, y - 4);
+    ctx.fillText(`Z${oven.zoneId}`, x + 25, y + 24);
 
     if (oven.busy) {
       const pct = oven.progress / oven.bakeTime;
       ctx.fillStyle = "#ec8332";
-      ctx.fillRect(x + 7, y + 30, 46 * pct, 8);
+      ctx.fillRect(x + 8, y + 35, (OVEN_WIDTH - 16) * pct, 9);
     }
 
     if (oven.ready) {
-      drawPixelSprite(SPRITES.pizzaBaked, x + 20, y + 10, 1);
+      ctx.fillStyle = "#f4db74";
+      ctx.beginPath();
+      ctx.arc(x + OVEN_WIDTH / 2, y + 40, 6, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.strokeStyle = "#5a2f09";
+      ctx.stroke();
     }
   }
 }
@@ -1504,43 +1464,57 @@ function drawCustomers() {
       continue;
     }
 
-    const screen = worldToScreen(customer.x, customer.y);
+    const p = worldToScreen(customer.x, customer.y);
     const bob = Math.sin(customer.bob) * 1.4;
-    const sprite = customer.angry ? SPRITES.customerAngry : SPRITES.customerHappy;
-    drawPixelSprite(sprite, screen.x - 9, screen.y - 16 + bob, 2);
+
+    ctx.fillStyle = customer.angry ? "#b84d43" : "#f0dbc1";
+    ctx.beginPath();
+    ctx.arc(p.x, p.y - 12 + bob, 6, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.fillStyle = customer.angry ? "#84413c" : "#5a7aa3";
+    ctx.fillRect(p.x - 5, p.y - 6 + bob, 10, 12);
+
+    ctx.fillStyle = "#2c1a10";
+    ctx.fillRect(p.x - 4, p.y + 6 + bob, 3, 6);
+    ctx.fillRect(p.x + 1, p.y + 6 + bob, 3, 6);
   }
 }
 
 function drawPlayer() {
   const x = player.x - WORLD.cameraX;
   const y = player.y - WORLD.cameraY;
-  const bob = state.moving ? Math.sin(state.animTime * 14) * 1.5 : 0;
+  const bob = state.moving ? Math.sin(state.animTime * 14) * 1.4 : 0;
 
-  let sprite = SPRITES.chefDown;
-  let flipX = false;
-  if (player.facing === "up") {
-    sprite = SPRITES.chefUp;
-  } else if (player.facing === "left") {
-    sprite = SPRITES.chefSide;
-    flipX = true;
-  } else if (player.facing === "right") {
-    sprite = SPRITES.chefSide;
-  }
+  ctx.fillStyle = "#f3d7b8";
+  ctx.beginPath();
+  ctx.arc(x, y - 20 + bob, 7, 0, Math.PI * 2);
+  ctx.fill();
 
-  drawPixelSprite(sprite, x - 12, y - 31 + bob, 2, flipX);
+  ctx.fillStyle = "#d92f21";
+  ctx.fillRect(x - 8, y - 30 + bob, 16, 4);
+
+  ctx.fillStyle = "#2f4f9f";
+  ctx.fillRect(x - 7, y - 13 + bob, 14, 16);
+
+  ctx.fillStyle = "#1e2d62";
+  ctx.fillRect(x - 6, y + 2 + bob, 5, 10);
+  ctx.fillRect(x + 1, y + 2 + bob, 5, 10);
 
   if (player.carry) {
-    let carrySprite = SPRITES.pizzaDough;
-    if (player.carry.stage === "sauce") carrySprite = SPRITES.pizzaSauce;
-    if (player.carry.stage === "cheese") carrySprite = SPRITES.pizzaCheese;
-    if (player.carry.stage === "baked") carrySprite = SPRITES.pizzaBaked;
+    if (player.carry.stage === "dough") ctx.fillStyle = "#e8c188";
+    else if (player.carry.stage === "sauce") ctx.fillStyle = "#d24536";
+    else if (player.carry.stage === "cheese") ctx.fillStyle = "#f3db73";
+    else ctx.fillStyle = "#c57b36";
 
-    const carryX = player.facing === "left" ? x - 22 : x + 10;
-    drawPixelSprite(carrySprite, carryX, y - 9 + bob, 2, player.facing === "left");
+    const carryX = player.facing === "left" ? x - 14 : x + 14;
+    ctx.beginPath();
+    ctx.arc(carryX, y - 12 + bob, 5.5, 0, Math.PI * 2);
+    ctx.fill();
   }
 }
 
-function drawPedidosPanel() {
+function drawOrdersPanel() {
   const panelX = 8;
   const panelY = 8;
   const panelW = 146;
@@ -1624,7 +1598,7 @@ function drawNearbyHint() {
         text = `${up.name} ($${up.cost})`;
       }
     }
-  } else if (nearest.kind === "oven") {
+  } else {
     const oven = findOvenById(nearest.id);
     if (oven) {
       text = `Toca: HORNO (Z${oven.zoneId})`;
@@ -1657,7 +1631,7 @@ function render() {
   drawStations();
   drawCustomers();
   drawPlayer();
-  drawPedidosPanel();
+  drawOrdersPanel();
   drawStamina();
   drawMoveTarget();
   drawNearbyHint();
@@ -1666,7 +1640,7 @@ function render() {
 
 function saveSnapshot() {
   return {
-    version: 3,
+    version: 4,
     ts: Date.now(),
     cityKey: state.cityKey,
     money: state.money,
@@ -1764,7 +1738,7 @@ function loadGame() {
 }
 
 function applySave(data) {
-  if (!data || data.version !== 3) {
+  if (!data || (data.version !== 3 && data.version !== 4)) {
     return false;
   }
 
@@ -1772,6 +1746,8 @@ function applySave(data) {
   resetProgress(campaignKey);
 
   state.money = clampNum(data.money, 0, 999999, state.money);
+  state.moneyDisplay = state.money;
+  state.moneyTween = null;
   state.day = clampInt(data.day, 1, 999, 1);
   state.stars = clampNum(data.stars, 0.8, 5, 5);
   state.businesses = clampInt(data.businesses, 1, 12, 1);
@@ -1796,6 +1772,11 @@ function applySave(data) {
   state.secondOvenUnlocked = Boolean(data.secondOvenUnlocked);
   state.muted = Boolean(data.muted);
   state.dashAuto = Boolean(data.dashAuto);
+  state.sprintBurstTimer = 0;
+  state.lastTapMs = 0;
+  state.lastTapX = 0;
+  state.lastTapY = 0;
+
   const unlockedZones = getUnlockedZones();
   const maxUnlockedZone = unlockedZones.length ? unlockedZones[unlockedZones.length - 1].id : 1;
 
@@ -1810,11 +1791,11 @@ function applySave(data) {
   }
 
   if (Array.isArray(data.ovens) && data.ovens.length) {
-    state.ovens = data.ovens.slice(0, 8).map((oven, index) => ({
+    state.ovens = data.ovens.slice(0, 10).map((oven, index) => ({
       id: typeof oven.id === "string" ? oven.id : `oven-${index + 1}`,
       zoneId: clampInt(oven.zoneId, 1, 3, 1),
       x: clampNum(oven.x, 40, WORLD.width - 40, 510),
-      y: clampNum(oven.y, 40, WORLD.height - 40, 207),
+      y: clampNum(oven.y, 40, WORLD.height - 40, 226),
       busy: Boolean(oven.busy),
       progress: clampNum(oven.progress, 0, 40, 0),
       bakeTime: clampNum(oven.bakeTime, 2.2, 12, 4.8),
@@ -1828,7 +1809,7 @@ function applySave(data) {
   }
 
   if (state.secondOvenUnlocked && !state.ovens.some((oven) => oven.id === "z1-second")) {
-    state.ovens.push(createOven("z1-second", 1, 690, 192, 3.9, 1));
+    state.ovens.push(createOven("z1-second", 1, 688, 226, 3.9, 1));
   }
 
   if (Array.isArray(data.customers)) {
@@ -1837,9 +1818,9 @@ function applySave(data) {
       orderId: clampInt(customer.orderId, 1, 9999999, 1),
       zoneId: clampInt(customer.zoneId, 1, maxUnlockedZone, 1),
       x: clampNum(customer.x, 20, WORLD.width - 20, 42),
-      y: clampNum(customer.y, 20, WORLD.height - 20, 688),
+      y: clampNum(customer.y, 20, WORLD.height - 20, 724),
       targetX: clampNum(customer.targetX, 20, WORLD.width - 20, 42),
-      targetY: clampNum(customer.targetY, 20, WORLD.height - 20, 688),
+      targetY: clampNum(customer.targetY, 20, WORLD.height - 20, 724),
       speed: clampNum(customer.speed, 30, 120, 56),
       state: ["entering", "waiting", "leaving"].includes(customer.state) ? customer.state : "entering",
       angry: Boolean(customer.angry),
@@ -1856,7 +1837,7 @@ function applySave(data) {
     player.carry = data.player.carry && typeof data.player.carry === "object" ? data.player.carry : null;
   }
 
-  syncCustomersWithPedidos();
+  syncCustomersWithOrders();
   updateSoundLabel();
   updateDashLabel();
   setCampaignChoice(campaignKey);
@@ -1875,6 +1856,19 @@ function worldPointFromEvent(event) {
   };
 }
 
+function isDoubleTapAt(point) {
+  const now = performance.now();
+  const withinTime = now - state.lastTapMs <= DOUBLE_TAP_MS;
+  const withinDistance = pointDistance(point.x, point.y, state.lastTapX, state.lastTapY) <= DOUBLE_TAP_DISTANCE;
+  const result = withinTime && withinDistance;
+
+  state.lastTapMs = now;
+  state.lastTapX = point.x;
+  state.lastTapY = point.y;
+
+  return result;
+}
+
 function handleMapTap(event) {
   if (!state.running) {
     return;
@@ -1890,6 +1884,11 @@ function handleMapTap(event) {
   state.tapX = point.x;
   state.tapY = point.y;
   state.tapPulse = 1;
+
+  if (isDoubleTapAt(point)) {
+    state.sprintBurstTimer = 1.5;
+    sound.play("action");
+  }
 
   const token = findInteractableAt(point.x, point.y);
 
@@ -1979,12 +1978,14 @@ function setupMainButtons() {
     markDirty();
   });
 
-  ui.dashBtn.addEventListener("click", () => {
-    state.dashAuto = !state.dashAuto;
-    updateDashLabel();
-    sound.play("ui");
-    markDirty();
-  });
+  if (ui.dashBtn) {
+    ui.dashBtn.addEventListener("click", () => {
+      state.dashAuto = !state.dashAuto;
+      updateDashLabel();
+      sound.play("ui");
+      markDirty();
+    });
+  }
 }
 
 function startShift(fromSave = false) {
@@ -1992,10 +1993,10 @@ function startShift(fromSave = false) {
   ui.startOverlay.style.display = "none";
 
   if (!fromSave && state.orders.length === 0) {
-    spawnOrder(2);
+    spawnOrder(1);
   }
 
-  showToast(fromSave ? "Bienvenido de regreso. Turno reanudado." : "Turno iniciado. Toca el mapa para moverte.", 2.3);
+  showToast(fromSave ? "Bienvenido de regreso. Turno reanudado." : "Turno iniciado. Toca para moverte. Doble toque para sprint.", 2.4);
   sound.play("success");
   markDirty();
 }
@@ -2006,14 +2007,14 @@ function tick(ts) {
 
   if (state.running) {
     updateMovement(dt);
-    updatePedidos(dt);
+    updateOrders(dt);
     updateCustomers(dt);
     updateOvens(dt);
-    updateDiaProgress(dt);
+    updateDayProgress(dt);
     updateSpills(dt);
 
     state.spawnTimer += dt;
-    const spawnRate = Math.max(2.3, state.orderSpawnBase - state.adBoost * 0.2 - state.day * 0.18 - state.businesses * 0.14);
+    const spawnRate = currentSpawnRate();
     if (state.spawnTimer >= spawnRate) {
       state.spawnTimer = 0;
       spawnOrder(1);
@@ -2039,12 +2040,13 @@ function tick(ts) {
       }
     }
 
-    if (state.saveDirty) {
-      state.autosaveTimer += dt;
-      if (state.autosaveTimer >= 4) {
-        saveGame();
-      }
+    if (state.stars <= 1.0 && state.orders.length > 0) {
+      state.rushLevel = Math.max(1, state.rushLevel - dt * 0.5);
     }
+  }
+
+  if (state.tapPulse > 0) {
+    state.tapPulse = Math.max(0, state.tapPulse - dt * 2.4);
   }
 
   if (state.messageTimer > 0) {
@@ -2054,8 +2056,13 @@ function tick(ts) {
     }
   }
 
-  if (state.tapPulse > 0) {
-    state.tapPulse = Math.max(0, state.tapPulse - dt * 2.8);
+  updateMoneyTween(dt);
+
+  if (state.saveDirty) {
+    state.autosaveTimer += dt;
+    if (state.autosaveTimer >= 2.2) {
+      saveGame();
+    }
   }
 
   updateHud();
@@ -2063,32 +2070,27 @@ function tick(ts) {
   requestAnimationFrame(tick);
 }
 
-function init() {
-  resetProgress(selectedCampaign);
-  updateSoundLabel();
-  updateDashLabel();
+function bootstrap() {
+  resizeCanvas();
+  setCampaignChoice("usa");
+  resetProgress("usa");
+
   setupCanvasControls();
   setupKeyboard();
   setupCampaignButtons();
   setupMainButtons();
-  resizeCanvas();
 
   const save = loadGame();
-  if (save && save.version === 3) {
-    ui.continueBtn.hidden = false;
-    if (CAMPAIGNS[save.cityKey]) {
-      setCampaignChoice(save.cityKey);
-    }
-  } else {
-    ui.continueBtn.hidden = true;
-  }
+  ui.continueBtn.hidden = !save;
+
+  updateSoundLabel();
+  updateDashLabel();
+  updateHud();
 
   window.addEventListener("resize", resizeCanvas);
-  window.addEventListener("blur", () => {
-    state.keys.clear();
-  });
 
+  last = performance.now();
   requestAnimationFrame(tick);
 }
 
-init();
+bootstrap();
