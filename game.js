@@ -318,7 +318,7 @@ function buildStations() {
     stations.push(createStation(`z${zone.id}-dough`, "dough", zone.id, x0 + 102, 220, 92, 70, "#f5d6a5", "MASA", minBusinesses));
     stations.push(createStation(`z${zone.id}-sauce`, "sauce", zone.id, x0 + 238, 220, 92, 70, "#cb4734", "SALSA", minBusinesses));
     stations.push(createStation(`z${zone.id}-cheese`, "cheese", zone.id, x0 + 374, 220, 92, 70, "#f0ce5d", "QUESO", minBusinesses));
-    stations.push(createStation(`z${zone.id}-counter`, "counter", zone.id, x0 + 600, 206, 146, 84, "#7f5532", "MOSTR", minBusinesses));
+    stations.push(createStation(`z${zone.id}-counter`, "counter", zone.id, x0 + 626, 206, 146, 84, "#7f5532", "MOSTR", minBusinesses));
     stations.push(createStation(`z${zone.id}-mop`, "mop", zone.id, x0 + 514, 388, 118, 76, "#8b562a", "TRAPO", minBusinesses));
 
     if (zone.id === 1) {
@@ -370,7 +370,7 @@ function buildUpgrades() {
       apply: () => {
         if (!state.secondOvenUnlocked) {
           state.secondOvenUnlocked = true;
-          state.ovens.push(createOven("z1-second", 1, 688, 226, 3.9, 1));
+          state.ovens.push(createOven("z1-second", 1, 588, 226, 3.9, 1));
         }
       }
     },
@@ -407,6 +407,36 @@ function buildUpgrades() {
       apply: () => {
         state.payoutMultiplier += 0.1;
         state.stars = clamp(state.stars + 0.24, 0.8, 5);
+      }
+    },
+    {
+      name: "Mas Mesas",
+      cost: 640,
+      apply: () => {
+        state.maxOrders += 1;
+        state.patienceBoost += 1;
+        state.stars = clamp(state.stars + 0.15, 0.8, 5);
+        showToast("Nuevas mesas: mejor servicio y reseñas.");
+      }
+    },
+    {
+      name: "Patio Exterior",
+      cost: 780,
+      apply: () => {
+        state.patienceBoost += 3;
+        state.payoutMultiplier += 0.05;
+        state.stars = clamp(state.stars + 0.2, 0.8, 5);
+        showToast("Patio nuevo: clientes mas felices.");
+      }
+    },
+    {
+      name: "Noches de Entretenimiento",
+      cost: 920,
+      apply: () => {
+        state.passiveIncome += 3;
+        state.payoutMultiplier += 0.06;
+        state.stars = clamp(state.stars + 0.22, 0.8, 5);
+        showToast("Show nocturno: suben reseñas y propinas.");
       }
     }
   ];
@@ -635,6 +665,21 @@ function getZoneExitPoint(zoneId) {
   return { x: zone.xMin + 22, y: 778 };
 }
 
+function getEatingSeatPoint(zoneId, seatIndex = 0) {
+  const counter = getCounterStationForZone(zoneId);
+  if (!counter) {
+    const zone = zoneById(zoneId);
+    return { x: zone.xMin + 660, y: 350 };
+  }
+
+  const col = seatIndex % 3;
+  const row = Math.floor(seatIndex / 3) % 2;
+  return {
+    x: counter.x + 24 + col * 36,
+    y: counter.y + counter.h + 56 + row * 28
+  };
+}
+
 function findStationById(id) {
   return state.stations.find((station) => station.id === id) || null;
 }
@@ -771,6 +816,7 @@ function spawnCustomerForOrder(order) {
     speed: 52 + Math.random() * 18,
     state: "entering",
     angry: false,
+    eatTimer: 0,
     bob: Math.random() * Math.PI * 2
   });
   state.customerId += 1;
@@ -797,6 +843,7 @@ function spawnOrder(count = 1) {
       zoneId: zone.id,
       patience,
       maxPatience: patience,
+      countdownStarted: false,
       value
     };
 
@@ -818,8 +865,27 @@ function sendCustomerHome(orderId, angry = false) {
   const exit = getZoneExitPoint(customer.zoneId);
   customer.state = "leaving";
   customer.angry = angry;
+  customer.eatTimer = 0;
   customer.targetX = exit.x;
   customer.targetY = exit.y;
+}
+
+function sendCustomerToEat(orderId) {
+  const customer = state.customers.find((entry) => entry.orderId === orderId && entry.state !== "leaving");
+  if (!customer) {
+    return;
+  }
+
+  const seatIndex = state.customers.filter(
+    (entry) => entry.zoneId === customer.zoneId && entry.state === "eating"
+  ).length;
+  const seat = getEatingSeatPoint(customer.zoneId, seatIndex);
+
+  customer.state = "eating";
+  customer.angry = false;
+  customer.eatTimer = 6 + Math.random() * 6;
+  customer.targetX = seat.x;
+  customer.targetY = seat.y;
 }
 
 function runAdCampaign() {
@@ -906,7 +972,7 @@ function serveOrderAtCounter(zoneId) {
   startMoneyTween(state.money, 0.56, 0.2);
   state.stars = clamp(state.stars + 0.05, 0.8, 5);
   player.carry = null;
-  sendCustomerHome(order.id, false);
+  sendCustomerToEat(order.id);
 
   showToast("succes!");
   sound.play("success");
@@ -1068,7 +1134,7 @@ function syncCustomersWithOrders() {
 
   for (let i = state.customers.length - 1; i >= 0; i -= 1) {
     const customer = state.customers[i];
-    if (!orderIds.has(customer.orderId) && customer.state !== "leaving") {
+    if (!orderIds.has(customer.orderId) && customer.state !== "leaving" && customer.state !== "eating") {
       customer.state = "leaving";
       const exit = getZoneExitPoint(customer.zoneId);
       customer.targetX = exit.x;
@@ -1093,7 +1159,11 @@ function updateCustomerTargets() {
     }
 
     waitingOrders.forEach((order, index) => {
-      const customer = state.customers.find((entry) => entry.orderId === order.id && entry.state !== "leaving");
+      const customer = state.customers.find(
+        (entry) =>
+          entry.orderId === order.id &&
+          (entry.state === "entering" || entry.state === "waiting")
+      );
       if (!customer) {
         return;
       }
@@ -1123,6 +1193,18 @@ function updateCustomers(dt) {
       customer.y += (dy / dist) * step;
     } else if (customer.state === "entering") {
       customer.state = "waiting";
+      const linkedOrder = state.orders.find((order) => order.id === customer.orderId);
+      if (linkedOrder) {
+        linkedOrder.countdownStarted = true;
+      }
+    } else if (customer.state === "eating") {
+      customer.eatTimer -= dt;
+      if (customer.eatTimer <= 0) {
+        customer.state = "leaving";
+        const exit = getZoneExitPoint(customer.zoneId);
+        customer.targetX = exit.x;
+        customer.targetY = exit.y;
+      }
     }
 
     if (customer.state === "leaving") {
@@ -1140,6 +1222,9 @@ function updateOrders(dt) {
 
   for (let i = state.orders.length - 1; i >= 0; i -= 1) {
     const order = state.orders[i];
+    if (!order.countdownStarted) {
+      continue;
+    }
     order.patience -= dt * decay;
 
     if (order.patience <= 0) {
@@ -1458,6 +1543,25 @@ function drawStations() {
   }
 }
 
+function drawDiningAreas() {
+  for (const zone of getUnlockedZones()) {
+    const counter = getCounterStationForZone(zone.id);
+    if (!counter) {
+      continue;
+    }
+
+    for (let i = 0; i < 6; i += 1) {
+      const seat = getEatingSeatPoint(zone.id, i);
+      const p = worldToScreen(seat.x, seat.y);
+
+      ctx.fillStyle = "rgba(74, 43, 17, 0.55)";
+      ctx.fillRect(p.x - 12, p.y - 3, 24, 6);
+      ctx.fillStyle = "#d7ba88";
+      ctx.fillRect(p.x - 8, p.y - 2, 16, 4);
+    }
+  }
+}
+
 function drawCustomers() {
   for (const customer of state.customers) {
     if (zoneById(customer.zoneId).minBusinesses > state.businesses) {
@@ -1465,7 +1569,7 @@ function drawCustomers() {
     }
 
     const p = worldToScreen(customer.x, customer.y);
-    const bob = Math.sin(customer.bob) * 1.4;
+    const bob = customer.state === "eating" ? Math.sin(customer.bob) * 0.4 : Math.sin(customer.bob) * 1.4;
 
     ctx.fillStyle = customer.angry ? "#b84d43" : "#f0dbc1";
     ctx.beginPath();
@@ -1473,7 +1577,15 @@ function drawCustomers() {
     ctx.fill();
 
     ctx.fillStyle = customer.angry ? "#84413c" : "#5a7aa3";
-    ctx.fillRect(p.x - 5, p.y - 6 + bob, 10, 12);
+    if (customer.state === "eating") {
+      ctx.fillRect(p.x - 5, p.y - 4 + bob, 10, 10);
+      ctx.fillStyle = "#f3db73";
+      ctx.beginPath();
+      ctx.arc(p.x + 8, p.y - 2 + bob, 3, 0, Math.PI * 2);
+      ctx.fill();
+    } else {
+      ctx.fillRect(p.x - 5, p.y - 6 + bob, 10, 12);
+    }
 
     ctx.fillStyle = "#2c1a10";
     ctx.fillRect(p.x - 4, p.y + 6 + bob, 3, 6);
@@ -1629,6 +1741,7 @@ function render() {
   drawStreetTiles();
   drawZoneDecor();
   drawStations();
+  drawDiningAreas();
   drawCustomers();
   drawPlayer();
   drawOrdersPanel();
@@ -1652,6 +1765,7 @@ function saveSnapshot() {
       zoneId: order.zoneId,
       patience: order.patience,
       maxPatience: order.maxPatience,
+      countdownStarted: Boolean(order.countdownStarted),
       value: order.value
     })),
     customers: state.customers.map((customer) => ({
@@ -1665,6 +1779,7 @@ function saveSnapshot() {
       speed: customer.speed,
       state: customer.state,
       angry: customer.angry,
+      eatTimer: customer.eatTimer,
       bob: customer.bob
     })),
     orderId: state.orderId,
@@ -1786,6 +1901,7 @@ function applySave(data) {
       zoneId: clampInt(order.zoneId, 1, maxUnlockedZone, 1),
       patience: clampNum(order.patience, 0.1, 240, 20),
       maxPatience: clampNum(order.maxPatience, 4, 280, 22),
+      countdownStarted: Boolean(order.countdownStarted),
       value: clampInt(order.value, 8, 700, 20)
     }));
   }
@@ -1809,7 +1925,17 @@ function applySave(data) {
   }
 
   if (state.secondOvenUnlocked && !state.ovens.some((oven) => oven.id === "z1-second")) {
-    state.ovens.push(createOven("z1-second", 1, 688, 226, 3.9, 1));
+    state.ovens.push(createOven("z1-second", 1, 588, 226, 3.9, 1));
+  }
+
+  for (const oven of state.ovens) {
+    if (oven.id === "z1-main") {
+      oven.x = 512;
+      oven.y = 226;
+    } else if (oven.id === "z1-second") {
+      oven.x = 588;
+      oven.y = 226;
+    }
   }
 
   if (Array.isArray(data.customers)) {
@@ -1822,10 +1948,20 @@ function applySave(data) {
       targetX: clampNum(customer.targetX, 20, WORLD.width - 20, 42),
       targetY: clampNum(customer.targetY, 20, WORLD.height - 20, 724),
       speed: clampNum(customer.speed, 30, 120, 56),
-      state: ["entering", "waiting", "leaving"].includes(customer.state) ? customer.state : "entering",
+      state: ["entering", "waiting", "eating", "leaving"].includes(customer.state) ? customer.state : "entering",
       angry: Boolean(customer.angry),
+      eatTimer: clampNum(customer.eatTimer, 0, 25, 0),
       bob: clampNum(customer.bob, -9999, 9999, Math.random() * Math.PI * 2)
     }));
+  }
+
+  for (const customer of state.customers) {
+    if (customer.state === "waiting" || customer.state === "eating") {
+      const linkedOrder = state.orders.find((order) => order.id === customer.orderId);
+      if (linkedOrder) {
+        linkedOrder.countdownStarted = true;
+      }
+    }
   }
 
   if (data.player && typeof data.player === "object") {
