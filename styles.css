@@ -193,8 +193,27 @@ body {
 
 .control-row {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: 1fr;
   gap: 0.5rem;
+}
+
+.seo-links {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.35rem;
+}
+
+.seo-links a {
+  display: block;
+  text-align: center;
+  padding: 0.45rem 0.35rem;
+  border-radius: 8px;
+  text-decoration: none;
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: #fff9ee;
+  background: #6d3f16;
+  border: 1px solid #4a280d;
 }
 
 .dash,

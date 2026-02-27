@@ -239,6 +239,10 @@ const state = {
   muted: false,
   moveTarget: null,
   pendingInteract: null,
+  sprintBurstTimer: 0,
+  lastTapMs: 0,
+  lastTapX: 0,
+  lastTapY: 0,
   tapPulse: 0,
   tapX: 0,
   tapY: 0
@@ -254,6 +258,11 @@ const player = {
 };
 
 const interactRadius = 80;
+const OVEN_WIDTH = 72;
+const OVEN_HEIGHT = 54;
+const OVEN_HIT_RADIUS = 41;
+const DOUBLE_TAP_MS = 290;
+const DOUBLE_TAP_DISTANCE = 52;
 let selectedCampaign = "usa";
 let last = 0;
 
@@ -585,6 +594,10 @@ function resetProgress(cityKey = "usa") {
   state.saveDirty = false;
   state.moveTarget = null;
   state.pendingInteract = null;
+  state.sprintBurstTimer = 0;
+  state.lastTapMs = 0;
+  state.lastTapX = 0;
+  state.lastTapY = 0;
   state.tapPulse = 0;
   state.tapX = 0;
   state.tapY = 0;
@@ -636,6 +649,9 @@ function resizeCanvas() {
 }
 
 function updateDashLabel() {
+  if (!ui.dashBtn) {
+    return;
+  }
   ui.dashBtn.textContent = `Sprint Auto: ${state.dashAuto ? "Encendido" : "Apagado"}`;
 }
 
@@ -810,7 +826,7 @@ function findInteractableAt(x, y) {
       continue;
     }
 
-    if (pointDistance(x, y, oven.x, oven.y) <= 34) {
+    if (pointDistance(x, y, oven.x, oven.y) <= OVEN_HIT_RADIUS) {
       return { kind: "oven", id: oven.id };
     }
   }
@@ -1318,7 +1334,7 @@ function movePlayerToward(dx, dy, dt) {
     speed *= 0.83;
   }
 
-  if (state.dashAuto && player.stamina > 0) {
+  if (state.sprintBurstTimer > 0 && player.stamina > 0) {
     speed *= 1.52;
     player.stamina = clamp(player.stamina - dt * 0.55, 0, 1);
   } else {
@@ -1344,6 +1360,10 @@ function movePlayerToward(dx, dy, dt) {
 function updateMovement(dt) {
   let moving = false;
   const keyboardDir = updateMoveTargetFromKeyboard();
+
+  if (state.sprintBurstTimer > 0) {
+    state.sprintBurstTimer = Math.max(0, state.sprintBurstTimer - dt);
+  }
 
   if (keyboardDir) {
     state.moveTarget = null;
@@ -1474,26 +1494,28 @@ function drawStations() {
       continue;
     }
 
-    const x = oven.x - 30 - WORLD.cameraX;
-    const y = oven.y - 22 - WORLD.cameraY;
+    const x = oven.x - OVEN_WIDTH / 2 - WORLD.cameraX;
+    const y = oven.y - OVEN_HEIGHT / 2 - WORLD.cameraY;
 
     ctx.fillStyle = "#5f6c74";
-    ctx.fillRect(x, y, 60, 46);
+    ctx.fillRect(x, y, OVEN_WIDTH, OVEN_HEIGHT);
     ctx.strokeStyle = "#1e252a";
-    ctx.strokeRect(x, y, 60, 46);
+    ctx.strokeRect(x, y, OVEN_WIDTH, OVEN_HEIGHT);
 
     ctx.fillStyle = "#fff5df";
+    ctx.font = "bold 9px monospace";
+    ctx.fillText("HORNO", x + 14, y + 12);
     ctx.font = "bold 10px monospace";
-    ctx.fillText(`Z${oven.zoneId}`, x + 20, y - 4);
+    ctx.fillText(`Z${oven.zoneId}`, x + 25, y + 24);
 
     if (oven.busy) {
       const pct = oven.progress / oven.bakeTime;
       ctx.fillStyle = "#ec8332";
-      ctx.fillRect(x + 7, y + 30, 46 * pct, 8);
+      ctx.fillRect(x + 8, y + 35, (OVEN_WIDTH - 16) * pct, 9);
     }
 
     if (oven.ready) {
-      drawPixelSprite(SPRITES.pizzaBaked, x + 20, y + 10, 1);
+      drawPixelSprite(SPRITES.pizzaBaked, x + OVEN_WIDTH / 2 - 4, y + 18, 1);
     }
   }
 }
@@ -1796,6 +1818,10 @@ function applySave(data) {
   state.secondOvenUnlocked = Boolean(data.secondOvenUnlocked);
   state.muted = Boolean(data.muted);
   state.dashAuto = Boolean(data.dashAuto);
+  state.sprintBurstTimer = 0;
+  state.lastTapMs = 0;
+  state.lastTapX = 0;
+  state.lastTapY = 0;
   const unlockedZones = getUnlockedZones();
   const maxUnlockedZone = unlockedZones.length ? unlockedZones[unlockedZones.length - 1].id : 1;
 
@@ -1875,6 +1901,19 @@ function worldPointFromEvent(event) {
   };
 }
 
+function isDoubleTapAt(point) {
+  const now = performance.now();
+  const withinTime = now - state.lastTapMs <= DOUBLE_TAP_MS;
+  const withinDistance = pointDistance(point.x, point.y, state.lastTapX, state.lastTapY) <= DOUBLE_TAP_DISTANCE;
+  const result = withinTime && withinDistance;
+
+  state.lastTapMs = now;
+  state.lastTapX = point.x;
+  state.lastTapY = point.y;
+
+  return result;
+}
+
 function handleMapTap(event) {
   if (!state.running) {
     return;
@@ -1890,6 +1929,11 @@ function handleMapTap(event) {
   state.tapX = point.x;
   state.tapY = point.y;
   state.tapPulse = 1;
+
+  if (isDoubleTapAt(point)) {
+    state.sprintBurstTimer = 1.5;
+    sound.play("action");
+  }
 
   const token = findInteractableAt(point.x, point.y);
 
@@ -1979,12 +2023,14 @@ function setupMainButtons() {
     markDirty();
   });
 
-  ui.dashBtn.addEventListener("click", () => {
-    state.dashAuto = !state.dashAuto;
-    updateDashLabel();
-    sound.play("ui");
-    markDirty();
-  });
+  if (ui.dashBtn) {
+    ui.dashBtn.addEventListener("click", () => {
+      state.dashAuto = !state.dashAuto;
+      updateDashLabel();
+      sound.play("ui");
+      markDirty();
+    });
+  }
 }
 
 function startShift(fromSave = false) {
@@ -1995,7 +2041,7 @@ function startShift(fromSave = false) {
     spawnOrder(2);
   }
 
-  showToast(fromSave ? "Bienvenido de regreso. Turno reanudado." : "Turno iniciado. Toca el mapa para moverte.", 2.3);
+  showToast(fromSave ? "Bienvenido de regreso. Turno reanudado." : "Turno iniciado. Toca para moverte. Doble toque para sprint.", 2.3);
   sound.play("success");
   markDirty();
 }

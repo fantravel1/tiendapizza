@@ -1,0 +1,188 @@
+:root {
+  --bg: #fff6e8;
+  --card: #ffffff;
+  --ink: #211407;
+  --brand: #8d1e10;
+  --brand-dark: #5d140b;
+  --accent: #0f6a35;
+  --line: #e3c59c;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  font-family: "Trebuchet MS", "Gill Sans", sans-serif;
+  color: var(--ink);
+  background: linear-gradient(180deg, #ffe7c2 0%, var(--bg) 48%);
+}
+
+body {
+  min-height: 100dvh;
+}
+
+.page {
+  width: min(100%, 760px);
+  margin: 0 auto;
+  padding: max(0.9rem, env(safe-area-inset-top)) 0.8rem max(1rem, env(safe-area-inset-bottom));
+  display: grid;
+  gap: 0.8rem;
+}
+
+.top {
+  background: var(--card);
+  border: 2px solid #b7742f;
+  border-radius: 14px;
+  padding: 0.9rem;
+}
+
+.eyebrow {
+  margin: 0 0 0.3rem;
+  font-size: 0.75rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: var(--brand);
+}
+
+h1 {
+  margin: 0;
+  font-size: clamp(1.4rem, 5.6vw, 2rem);
+  line-height: 1.08;
+}
+
+.lead {
+  margin: 0.55rem 0 0;
+  font-size: 0.95rem;
+  line-height: 1.45;
+}
+
+.cta-row {
+  display: grid;
+  gap: 0.45rem;
+  margin-top: 0.7rem;
+}
+
+.cta,
+.ghost {
+  display: block;
+  text-align: center;
+  border-radius: 10px;
+  padding: 0.75rem 0.6rem;
+  text-decoration: none;
+  font-weight: 800;
+}
+
+.cta {
+  background: linear-gradient(180deg, #1f8b44 0%, #145a2c 100%);
+  color: #fffef8;
+}
+
+.ghost {
+  background: #f7ebd7;
+  border: 1px solid #c9a679;
+  color: #4b280d;
+}
+
+.card {
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 0.85rem;
+}
+
+h2 {
+  margin: 0 0 0.45rem;
+  font-size: 1.1rem;
+}
+
+h3 {
+  margin: 0;
+  font-size: 0.96rem;
+}
+
+p {
+  margin: 0;
+  line-height: 1.5;
+  font-size: 0.92rem;
+}
+
+.list {
+  margin: 0;
+  padding-left: 1rem;
+  display: grid;
+  gap: 0.35rem;
+}
+
+.grid {
+  display: grid;
+  gap: 0.55rem;
+}
+
+.kpi {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 0.5rem;
+}
+
+.kpi div {
+  border: 1px solid var(--line);
+  background: #fffaf2;
+  border-radius: 10px;
+  padding: 0.6rem;
+}
+
+.kpi strong {
+  display: block;
+  color: var(--brand);
+  margin-bottom: 0.2rem;
+  font-size: 0.76rem;
+  text-transform: uppercase;
+}
+
+.inline-nav {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.35rem;
+}
+
+.inline-nav a {
+  display: block;
+  text-decoration: none;
+  text-align: center;
+  padding: 0.45rem;
+  border-radius: 8px;
+  border: 1px solid #d4b58b;
+  color: #4a2a0f;
+  font-size: 0.8rem;
+  background: #fffaef;
+}
+
+.faq-item {
+  border-top: 1px solid #ecd4b2;
+  padding-top: 0.55rem;
+}
+
+.footer {
+  text-align: center;
+  font-size: 0.77rem;
+  color: #5d4129;
+}
+
+.footer a {
+  color: #5d140b;
+}
+
+@media (min-width: 620px) {
+  .cta-row {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .kpi {
+    grid-template-columns: 1fr 1fr;
+  }
+}

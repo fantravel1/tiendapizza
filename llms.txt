@@ -1,0 +1,18 @@
+# Tienda Pizza - Pizza Rush
+
+> Official pages for the mobile-first pizza business game in Mexican Spanish.
+
+## Primary page
+- https://tiendapizza.com/
+
+## SEO landing pages
+- https://tiendapizza.com/juego-de-pizzeria-gratis.html
+- https://tiendapizza.com/simulador-de-negocio-de-pizza.html
+- https://tiendapizza.com/juego-de-pizza-para-celular.html
+- https://tiendapizza.com/faq-juego-de-pizzeria.html
+
+## Short summary
+Pizza Rush is a free pizza business game for mobile. Core loop: cook pizzas, serve zone-based orders, invest in advertising, and expand to multiple branches.
+
+## Supported language
+- es-MX

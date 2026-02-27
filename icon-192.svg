@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 192 192" role="img" aria-label="Pizza Rush icon 192">
+  <rect width="192" height="192" rx="40" fill="#8d1e10"/>
+  <path d="M32 42L160 62L84 170Z" fill="#f7c66a"/>
+  <path d="M36 46L154 64L96 86L52 126Z" fill="#f4de95" opacity="0.82"/>
+  <circle cx="93" cy="94" r="11" fill="#bd2d20"/>
+  <circle cx="117" cy="108" r="11" fill="#bd2d20"/>
+  <circle cx="90" cy="132" r="11" fill="#bd2d20"/>
+  <path d="M52 126L84 170L71 170L41 123Z" fill="#d09147"/>
+</svg>

@@ -1,0 +1,5 @@
+User-agent: *
+Allow: /
+
+Host: tiendapizza.com
+Sitemap: https://tiendapizza.com/sitemap.xml
