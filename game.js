@@ -115,6 +115,12 @@ const state = {
   nextUpgrade: 0,
   passiveIncome: 0,
   secondOvenUnlocked: false,
+  autoPrepUnlocked: false,
+  autoRunnerUnlocked: false,
+  autoCleanerUnlocked: false,
+  prepWorker: null,
+  runnerWorker: null,
+  cleanerWorker: null,
   keys: new Set(),
   dashAuto: false,
   moving: false,
@@ -150,6 +156,33 @@ const DOUBLE_TAP_MS = 290;
 const DOUBLE_TAP_DISTANCE = 56;
 let selectedCampaign = "usa";
 let last = 0;
+
+function createPrepWorker() {
+  return {
+    x: 120,
+    y: 330,
+    state: "toDough",
+    carry: null,
+    targetOvenId: null
+  };
+}
+
+function createRunnerWorker() {
+  return {
+    x: 660,
+    y: 330,
+    carry: null,
+    targetOvenId: null
+  };
+}
+
+function createCleanerWorker() {
+  return {
+    x: 560,
+    y: 468,
+    state: "idle"
+  };
+}
 
 const sound = {
   ctx: null,
@@ -352,6 +385,30 @@ function buildUpgrades() {
       }
     },
     {
+      name: "Ayudante de Cocina",
+      cost: 110,
+      apply: () => {
+        state.autoPrepUnlocked = true;
+        showToast("Ayudante contratado: cocina automatica en Tienda 1.");
+      }
+    },
+    {
+      name: "Repartidor de Mostrador",
+      cost: 190,
+      apply: () => {
+        state.autoRunnerUnlocked = true;
+        showToast("Repartidor contratado: horno a mostrador en Tienda 1.");
+      }
+    },
+    {
+      name: "Personal de Limpieza",
+      cost: 250,
+      apply: () => {
+        state.autoCleanerUnlocked = true;
+        showToast("Personal de limpieza contratado.");
+      }
+    },
+    {
       name: "Volantes Callejeros",
       cost: 120,
       apply: () => {
@@ -547,6 +604,12 @@ function resetProgress(cityKey = "usa") {
   state.nextUpgrade = 0;
   state.passiveIncome = 0;
   state.secondOvenUnlocked = false;
+  state.autoPrepUnlocked = false;
+  state.autoRunnerUnlocked = false;
+  state.autoCleanerUnlocked = false;
+  state.prepWorker = createPrepWorker();
+  state.runnerWorker = createRunnerWorker();
+  state.cleanerWorker = createCleanerWorker();
   state.keys.clear();
   state.dashAuto = false;
   state.moving = false;
@@ -657,6 +720,40 @@ function pointDistance(ax, ay, bx, by) {
 
 function getCounterStationForZone(zoneId) {
   return state.stations.find((station) => station.type === "counter" && station.zoneId === zoneId);
+}
+
+function getStationByTypeForZone(type, zoneId) {
+  return state.stations.find(
+    (station) => station.type === type && station.zoneId === zoneId && isStationUnlocked(station)
+  ) || null;
+}
+
+function getZoneOvens(zoneId) {
+  return state.ovens.filter((oven) => oven.zoneId === zoneId && isOvenUnlocked(oven));
+}
+
+function getAvailableZoneOven(zoneId) {
+  return getZoneOvens(zoneId).find((oven) => !oven.busy && !oven.ready) || null;
+}
+
+function moveActorToward(actor, targetX, targetY, speed, dt) {
+  if (!actor) {
+    return false;
+  }
+
+  const dx = targetX - actor.x;
+  const dy = targetY - actor.y;
+  const dist = Math.hypot(dx, dy);
+  if (dist < 2) {
+    actor.x = targetX;
+    actor.y = targetY;
+    return true;
+  }
+
+  const step = Math.min(dist, speed * dt);
+  actor.x += (dx / dist) * step;
+  actor.y += (dy / dist) * step;
+  return step >= dist - 0.001;
 }
 
 function getZoneSpawnPoint(zoneId) {
@@ -1089,6 +1186,201 @@ function serveOrderAtCounter(zoneId) {
   sound.play("success");
   buzz(14);
   markDirty();
+}
+
+function serveOrderByWorker(zoneId, payoutPoint) {
+  const orderIndex = state.orders.findIndex((order) => order.zoneId === zoneId);
+  if (orderIndex < 0) {
+    return false;
+  }
+
+  const order = state.orders.splice(orderIndex, 1)[0];
+  const tipRate = clamp(order.patience / order.maxPatience, 0, 1);
+  const tip = Math.floor(tipRate * 6);
+  const payout = Math.floor((order.value + tip) * 0.9);
+
+  state.money += payout;
+  spawnMoneyFly(payoutPoint.x, payoutPoint.y, payout);
+  startMoneyTween(state.money, 0.48, 0.1);
+  state.stars = clamp(state.stars + 0.03, 0.8, 5);
+  sendCustomerToEat(order.id);
+  markDirty();
+  return true;
+}
+
+function updatePrepWorker(dt) {
+  if (!state.autoPrepUnlocked || !state.prepWorker) {
+    return;
+  }
+
+  const worker = state.prepWorker;
+  const dough = getStationByTypeForZone("dough", 1);
+  const sauce = getStationByTypeForZone("sauce", 1);
+  const cheese = getStationByTypeForZone("cheese", 1);
+  if (!dough || !sauce || !cheese) {
+    return;
+  }
+
+  const doughC = stationCenter(dough);
+  const sauceC = stationCenter(sauce);
+  const cheeseC = stationCenter(cheese);
+  const speed = 88;
+
+  if (worker.state === "toDough") {
+    if (moveActorToward(worker, doughC.x, doughC.y, speed, dt)) {
+      worker.carry = "dough";
+      worker.state = "toSauce";
+    }
+    return;
+  }
+
+  if (worker.state === "toSauce") {
+    if (moveActorToward(worker, sauceC.x, sauceC.y, speed, dt)) {
+      worker.carry = "sauce";
+      worker.state = "toCheese";
+    }
+    return;
+  }
+
+  if (worker.state === "toCheese") {
+    if (moveActorToward(worker, cheeseC.x, cheeseC.y, speed, dt)) {
+      worker.carry = "cheese";
+      worker.state = "toOven";
+    }
+    return;
+  }
+
+  if (worker.state === "waitOven") {
+    if (worker.carry !== "cheese") {
+      worker.state = "toDough";
+      return;
+    }
+    const openOven = getAvailableZoneOven(1);
+    if (openOven) {
+      worker.targetOvenId = openOven.id;
+      worker.state = "toOven";
+    }
+    return;
+  }
+
+  if (worker.state === "toOven") {
+    if (worker.carry !== "cheese") {
+      worker.state = "toDough";
+      worker.targetOvenId = null;
+      return;
+    }
+
+    let targetOven = worker.targetOvenId ? findOvenById(worker.targetOvenId) : null;
+    if (!targetOven || targetOven.zoneId !== 1 || !isOvenUnlocked(targetOven) || targetOven.busy || targetOven.ready) {
+      targetOven = getAvailableZoneOven(1);
+      worker.targetOvenId = targetOven ? targetOven.id : null;
+    }
+
+    if (!targetOven) {
+      worker.state = "waitOven";
+      return;
+    }
+
+    const ovenC = ovenCenter(targetOven);
+    if (moveActorToward(worker, ovenC.x, ovenC.y, speed, dt)) {
+      if (!targetOven.busy && !targetOven.ready) {
+        targetOven.busy = true;
+        targetOven.progress = 0;
+        worker.carry = null;
+        worker.targetOvenId = null;
+        worker.state = "toDough";
+        sound.play("action");
+        markDirty();
+      } else {
+        worker.state = "waitOven";
+      }
+    }
+    return;
+  }
+
+  worker.state = "toDough";
+}
+
+function updateRunnerWorker(dt) {
+  if (!state.autoRunnerUnlocked || !state.runnerWorker) {
+    return;
+  }
+
+  const worker = state.runnerWorker;
+  const counter = getCounterStationForZone(1);
+  if (!counter) {
+    return;
+  }
+
+  const counterC = stationCenter(counter);
+  const speed = 96;
+
+  if (!worker.carry) {
+    let targetOven = worker.targetOvenId ? findOvenById(worker.targetOvenId) : null;
+    if (!targetOven || targetOven.zoneId !== 1 || !isOvenUnlocked(targetOven) || !targetOven.ready) {
+      targetOven = getZoneOvens(1).find((oven) => oven.ready) || null;
+      worker.targetOvenId = targetOven ? targetOven.id : null;
+    }
+
+    if (!targetOven) {
+      moveActorToward(worker, counterC.x + 24, counterC.y + 42, speed * 0.75, dt);
+      return;
+    }
+
+    const ovenC = ovenCenter(targetOven);
+    if (moveActorToward(worker, ovenC.x, ovenC.y, speed, dt)) {
+      if (targetOven.ready) {
+        targetOven.ready = false;
+        worker.carry = "baked";
+        worker.targetOvenId = null;
+        markDirty();
+      }
+    }
+    return;
+  }
+
+  if (moveActorToward(worker, counterC.x, counterC.y, speed, dt)) {
+    if (serveOrderByWorker(1, counterC)) {
+      worker.carry = null;
+      sound.play("success");
+    }
+  }
+}
+
+function updateCleanerWorker(dt) {
+  if (!state.autoCleanerUnlocked || !state.cleanerWorker) {
+    return;
+  }
+
+  const worker = state.cleanerWorker;
+  const mop = getStationByTypeForZone("mop", 1);
+  if (!mop) {
+    return;
+  }
+  const mopC = stationCenter(mop);
+  const speed = 84;
+
+  if (state.spillActive) {
+    worker.state = "cleaning";
+    if (moveActorToward(worker, mopC.x, mopC.y, speed, dt)) {
+      state.spillActive = false;
+      state.stars = clamp(state.stars + 0.02, 0.8, 5);
+      worker.state = "idle";
+      showToast("Limpieza resolvio el derrame.");
+      sound.play("action");
+      markDirty();
+    }
+    return;
+  }
+
+  worker.state = "idle";
+  moveActorToward(worker, mopC.x + 18, mopC.y + 22, speed * 0.6, dt);
+}
+
+function updateWorkers(dt) {
+  updatePrepWorker(dt);
+  updateRunnerWorker(dt);
+  updateCleanerWorker(dt);
 }
 
 function interactWithStation(station) {
@@ -1729,6 +2021,53 @@ function drawCustomers() {
   }
 }
 
+function drawWorker(worker, color, label, carry = null) {
+  if (!worker) {
+    return;
+  }
+
+  const p = worldToScreen(worker.x, worker.y);
+
+  ctx.fillStyle = "#f0dbc1";
+  ctx.beginPath();
+  ctx.arc(p.x, p.y - 12, 5.8, 0, Math.PI * 2);
+  ctx.fill();
+
+  ctx.fillStyle = color;
+  ctx.fillRect(p.x - 5, p.y - 6, 10, 12);
+  ctx.fillStyle = "#2c1a10";
+  ctx.fillRect(p.x - 4, p.y + 6, 3, 6);
+  ctx.fillRect(p.x + 1, p.y + 6, 3, 6);
+
+  if (carry) {
+    if (carry === "dough") ctx.fillStyle = "#e8c188";
+    else if (carry === "sauce") ctx.fillStyle = "#d24536";
+    else if (carry === "cheese") ctx.fillStyle = "#f3db73";
+    else ctx.fillStyle = "#c57b36";
+    ctx.beginPath();
+    ctx.arc(p.x + 9, p.y - 2, 4.2, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  ctx.fillStyle = "rgba(22, 12, 7, 0.75)";
+  ctx.fillRect(p.x - 10, p.y - 21, 20, 8);
+  ctx.fillStyle = "#ffe7bc";
+  ctx.font = "bold 8px monospace";
+  ctx.fillText(label, p.x - 8, p.y - 14);
+}
+
+function drawWorkers() {
+  if (state.autoPrepUnlocked) {
+    drawWorker(state.prepWorker, "#4a9f5b", "COC", state.prepWorker ? state.prepWorker.carry : null);
+  }
+  if (state.autoRunnerUnlocked) {
+    drawWorker(state.runnerWorker, "#4f73b8", "RUN", state.runnerWorker ? state.runnerWorker.carry : null);
+  }
+  if (state.autoCleanerUnlocked) {
+    drawWorker(state.cleanerWorker, "#ad7f3c", "LIM", null);
+  }
+}
+
 function drawPlayer() {
   const x = player.x - WORLD.cameraX;
   const y = player.y - WORLD.cameraY;
@@ -1882,6 +2221,7 @@ function render() {
   drawDiningAreas();
   drawDroppedItems();
   drawCustomers();
+  drawWorkers();
   drawPlayer();
   drawOrdersPanel();
   drawStamina();
@@ -1892,7 +2232,7 @@ function render() {
 
 function saveSnapshot() {
   return {
-    version: 4,
+    version: 5,
     ts: Date.now(),
     cityKey: state.cityKey,
     money: state.money,
@@ -1947,6 +2287,12 @@ function saveSnapshot() {
     nextUpgrade: state.nextUpgrade,
     passiveIncome: state.passiveIncome,
     secondOvenUnlocked: state.secondOvenUnlocked,
+    autoPrepUnlocked: state.autoPrepUnlocked,
+    autoRunnerUnlocked: state.autoRunnerUnlocked,
+    autoCleanerUnlocked: state.autoCleanerUnlocked,
+    prepWorker: state.prepWorker,
+    runnerWorker: state.runnerWorker,
+    cleanerWorker: state.cleanerWorker,
     ovens: state.ovens.map((oven) => ({
       id: oven.id,
       zoneId: oven.zoneId,
@@ -1999,7 +2345,7 @@ function loadGame() {
 }
 
 function applySave(data) {
-  if (!data || (data.version !== 3 && data.version !== 4)) {
+  if (!data || (data.version !== 3 && data.version !== 4 && data.version !== 5)) {
     return false;
   }
 
@@ -2032,6 +2378,9 @@ function applySave(data) {
   state.nextUpgrade = clampInt(data.nextUpgrade, 0, state.upgrades.length, 0);
   state.passiveIncome = clampNum(data.passiveIncome, 0, 140, 0);
   state.secondOvenUnlocked = Boolean(data.secondOvenUnlocked);
+  state.autoPrepUnlocked = Boolean(data.autoPrepUnlocked);
+  state.autoRunnerUnlocked = Boolean(data.autoRunnerUnlocked);
+  state.autoCleanerUnlocked = Boolean(data.autoCleanerUnlocked);
   state.muted = Boolean(data.muted);
   state.dashAuto = Boolean(data.dashAuto);
   state.sprintBurstTimer = 0;
@@ -2109,6 +2458,33 @@ function applySave(data) {
       y: clampNum(item.y, 24, WORLD.height - 24, player.y),
       stage: ["dough", "sauce", "cheese", "baked"].includes(item.stage) ? item.stage : "dough"
     }));
+  }
+
+  if (data.prepWorker && typeof data.prepWorker === "object") {
+    state.prepWorker = {
+      x: clampNum(data.prepWorker.x, 24, getMaxReachX() - 24, 120),
+      y: clampNum(data.prepWorker.y, 24, WORLD.height - 24, 330),
+      state: typeof data.prepWorker.state === "string" ? data.prepWorker.state : "toDough",
+      carry: ["dough", "sauce", "cheese", "baked", null].includes(data.prepWorker.carry) ? data.prepWorker.carry : null,
+      targetOvenId: typeof data.prepWorker.targetOvenId === "string" ? data.prepWorker.targetOvenId : null
+    };
+  }
+
+  if (data.runnerWorker && typeof data.runnerWorker === "object") {
+    state.runnerWorker = {
+      x: clampNum(data.runnerWorker.x, 24, getMaxReachX() - 24, 660),
+      y: clampNum(data.runnerWorker.y, 24, WORLD.height - 24, 330),
+      carry: ["baked", null].includes(data.runnerWorker.carry) ? data.runnerWorker.carry : null,
+      targetOvenId: typeof data.runnerWorker.targetOvenId === "string" ? data.runnerWorker.targetOvenId : null
+    };
+  }
+
+  if (data.cleanerWorker && typeof data.cleanerWorker === "object") {
+    state.cleanerWorker = {
+      x: clampNum(data.cleanerWorker.x, 24, getMaxReachX() - 24, 560),
+      y: clampNum(data.cleanerWorker.y, 24, WORLD.height - 24, 468),
+      state: typeof data.cleanerWorker.state === "string" ? data.cleanerWorker.state : "idle"
+    };
   }
 
   for (const customer of state.customers) {
@@ -2331,6 +2707,7 @@ function tick(ts) {
     updateOrders(dt);
     updateCustomers(dt);
     updateOvens(dt);
+    updateWorkers(dt);
     updateDayProgress(dt);
     updateSpills(dt);
 
