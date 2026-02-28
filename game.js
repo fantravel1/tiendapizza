@@ -119,6 +119,14 @@ const state = {
   autoRunnerUnlocked: false,
   autoCleanerUnlocked: false,
   storeProgress: {},
+  gameMode: "pizza",
+  cityModeUnlocked: false,
+  cityUnits: [],
+  cityIncomeTimer: 0,
+  cityBuildCount: 0,
+  pendingStoreUnlock: null,
+  unlockConfirmZone: null,
+  unlockConfirmTimer: 0,
   prepWorkers: [],
   runnerWorkers: [],
   cleanerWorkers: [],
@@ -170,6 +178,9 @@ const STORE_EXPANSION_THRESHOLDS = {
   3: 8
 };
 const UPGRADE_MOMENTUM_BONUS_RATE = 0.12;
+const CITY_GRID_COLS = 6;
+const CITY_GRID_ROWS = 5;
+const CITY_GRID_GAP = 6;
 let selectedCampaign = "usa";
 let last = 0;
 
@@ -420,6 +431,16 @@ function totalStorePrestigeLevels() {
   return total;
 }
 
+function completedStoreCount() {
+  let completed = 0;
+  for (const zone of ZONES) {
+    if (clampInt(getStoreProgress(zone.id).completions, 0, 999, 0) > 0) {
+      completed += 1;
+    }
+  }
+  return completed;
+}
+
 function zoneRevenueMultiplier(zoneId) {
   const progress = getStoreProgress(zoneId);
   const prestige = clampInt(progress.prestigeLevel, 0, 99, 0);
@@ -427,40 +448,256 @@ function zoneRevenueMultiplier(zoneId) {
   return 1 + prestige * 0.11 + Math.max(0, completions - 1) * 0.03;
 }
 
-function syncBusinessExpansionByStoreProgress(showToasts = true) {
-  const before = state.businesses;
+function getCityLayout() {
+  const top = 62;
+  const bottom = 58;
+  const side = 10;
+  const width = Math.max(220, WORLD.viewW - side * 2);
+  const height = Math.max(220, WORLD.viewH - top - bottom);
+  const cellW = Math.max(22, Math.floor((width - (CITY_GRID_COLS - 1) * CITY_GRID_GAP) / CITY_GRID_COLS));
+  const cellH = Math.max(22, Math.floor((height - (CITY_GRID_ROWS - 1) * CITY_GRID_GAP) / CITY_GRID_ROWS));
+  const gridW = cellW * CITY_GRID_COLS + (CITY_GRID_COLS - 1) * CITY_GRID_GAP;
+  const gridH = cellH * CITY_GRID_ROWS + (CITY_GRID_ROWS - 1) * CITY_GRID_GAP;
+  return {
+    x: Math.floor((WORLD.viewW - gridW) / 2),
+    y: top,
+    cellW,
+    cellH,
+    gridW,
+    gridH
+  };
+}
+
+function totalCityLots() {
+  return CITY_GRID_COLS * CITY_GRID_ROWS;
+}
+
+function cityLotRect(lotId) {
+  const layout = getCityLayout();
+  const max = totalCityLots() - 1;
+  const safeLot = clampInt(lotId, 0, max, 0);
+  const col = safeLot % CITY_GRID_COLS;
+  const row = Math.floor(safeLot / CITY_GRID_COLS);
+  return {
+    x: layout.x + col * (layout.cellW + CITY_GRID_GAP),
+    y: layout.y + row * (layout.cellH + CITY_GRID_GAP),
+    w: layout.cellW,
+    h: layout.cellH
+  };
+}
+
+function cityLotFromPoint(screenX, screenY) {
+  const layout = getCityLayout();
+  if (
+    screenX < layout.x ||
+    screenY < layout.y ||
+    screenX > layout.x + layout.gridW ||
+    screenY > layout.y + layout.gridH
+  ) {
+    return -1;
+  }
+
+  const stepX = layout.cellW + CITY_GRID_GAP;
+  const stepY = layout.cellH + CITY_GRID_GAP;
+  const relX = screenX - layout.x;
+  const relY = screenY - layout.y;
+  const col = Math.floor(relX / stepX);
+  const row = Math.floor(relY / stepY);
+
+  if (col < 0 || row < 0 || col >= CITY_GRID_COLS || row >= CITY_GRID_ROWS) {
+    return -1;
+  }
+
+  if (relX % stepX > layout.cellW || relY % stepY > layout.cellH) {
+    return -1;
+  }
+
+  return row * CITY_GRID_COLS + col;
+}
+
+function getCityUnitAtLot(lotId) {
+  return state.cityUnits.find((unit) => unit.lotId === lotId) || null;
+}
+
+function getCityBuildCost() {
+  const prestige = totalStorePrestigeLevels();
+  return Math.round(72 + state.cityBuildCount * 24 + state.cityUnits.length * 10 + prestige * 18);
+}
+
+function getCityUpgradeCost(unit) {
+  const level = clampInt(unit.level, 1, 20, 1);
+  return Math.round(56 + level * 44 + level * level * 18);
+}
+
+function cityIncomeMultiplier() {
+  return 1 + state.day * 0.015 + totalStorePrestigeLevels() * 0.08 + completedStoreCount() * 0.1;
+}
+
+function cityUnitIncome(unit) {
+  const level = clampInt(unit.level, 1, 20, 1);
+  return Math.round((5 + level * 4 + level * level * 1.4) * cityIncomeMultiplier());
+}
+
+function totalCityIncome() {
+  return state.cityUnits.reduce((sum, unit) => sum + cityUnitIncome(unit), 0);
+}
+
+function enterCityMode(isFreshUnlock = false) {
+  if (!state.cityModeUnlocked) {
+    return false;
+  }
+
+  state.gameMode = "city";
+  state.moveTarget = null;
+  state.pendingInteract = null;
+  state.moving = false;
+  state.tapPulse = 0;
+  WORLD.cameraX = 0;
+  WORLD.cameraY = 0;
+
+  if (isFreshUnlock) {
+    state.orders = [];
+    state.customers = [];
+    state.droppedItems = [];
+    player.carry = null;
+    showToast("Nueva etapa: Ciudad desbloqueada. Toca lotes para construir.", 2.8);
+  } else {
+    showToast("Modo Ciudad activo. Toca un lote para construir.", 2.2);
+  }
+  markDirty();
+  return true;
+}
+
+function maybeUnlockCityMode(autoEnter = true) {
+  if (state.cityModeUnlocked) {
+    return false;
+  }
+
+  if (completedStoreCount() < ZONES.length) {
+    return false;
+  }
+
+  state.cityModeUnlocked = true;
+  sound.play("upgrade");
+  buzz(18);
+  if (autoEnter) {
+    enterCityMode(true);
+  }
+  markDirty();
+  return true;
+}
+
+function nextStoreUnlockProgress() {
   const total = totalStoreUpgradesPurchased();
-
-  if (total >= STORE_EXPANSION_THRESHOLDS[2]) {
-    state.businesses = Math.max(state.businesses, 2);
+  if (state.businesses < 2) {
+    return {
+      zone: 2,
+      remaining: Math.max(0, STORE_EXPANSION_THRESHOLDS[2] - total)
+    };
   }
-  if (total >= STORE_EXPANSION_THRESHOLDS[3]) {
-    state.businesses = Math.max(state.businesses, 3);
+  if (state.businesses < 3) {
+    return {
+      zone: 3,
+      remaining: Math.max(0, STORE_EXPANSION_THRESHOLDS[3] - total)
+    };
   }
+  return null;
+}
 
-  if (state.businesses > before) {
-    for (let next = before + 1; next <= state.businesses; next += 1) {
-      if (next === 2) {
-        state.passiveIncome += 3;
-        state.maxOrders += 2;
-      } else if (next === 3) {
-        state.passiveIncome += 4;
-        state.maxOrders += 2;
-        state.orderSpawnBase = Math.max(3.4, state.orderSpawnBase - 0.35);
-      }
+function updateCityMode(dt) {
+  WORLD.cameraX = 0;
+  WORLD.cameraY = 0;
+  state.moveTarget = null;
+  state.pendingInteract = null;
+  state.moving = false;
 
-      if (!showToasts) {
-        continue;
+  state.cityIncomeTimer += dt;
+  const cycle = Math.max(1.55, 3.2 - totalStorePrestigeLevels() * 0.08);
+  if (state.cityIncomeTimer >= cycle) {
+    state.cityIncomeTimer = 0;
+    const income = totalCityIncome();
+    if (income > 0) {
+      state.money += income;
+      const anchor = state.cityUnits.length ? cityLotRect(randomChoice(state.cityUnits).lotId) : null;
+      if (anchor) {
+        spawnMoneyFly(anchor.x + anchor.w / 2, anchor.y + anchor.h / 2, income);
       }
-      if (next === 2) {
-        showToast("Segunda sucursal desbloqueada.", 2.3);
-      } else if (next === 3) {
-        showToast("Tercera sucursal desbloqueada.", 2.3);
-      }
+      startMoneyTween(state.money, 0.5, 0.05);
+      markDirty();
     }
   }
+}
 
-  return state.businesses > before;
+function nextEligibleStoreUnlockZone() {
+  const total = totalStoreUpgradesPurchased();
+  if (state.businesses < 2 && total >= STORE_EXPANSION_THRESHOLDS[2]) {
+    return 2;
+  }
+  if (state.businesses < 3 && total >= STORE_EXPANSION_THRESHOLDS[3]) {
+    return 3;
+  }
+  return null;
+}
+
+function syncPendingStoreUnlockFromProgress() {
+  const next = nextEligibleStoreUnlockZone();
+  if (state.pendingStoreUnlock !== next) {
+    state.pendingStoreUnlock = next;
+    if (state.unlockConfirmZone !== next) {
+      state.unlockConfirmZone = null;
+      state.unlockConfirmTimer = 0;
+    }
+  }
+  return next;
+}
+
+function openStorefront(zoneId, announce = true) {
+  const target = clampInt(zoneId, 2, 3, state.businesses + 1);
+  if (target <= state.businesses) {
+    return false;
+  }
+
+  state.businesses = target;
+  if (target === 2) {
+    state.passiveIncome += 3;
+    state.maxOrders += 2;
+  } else if (target === 3) {
+    state.passiveIncome += 4;
+    state.maxOrders += 2;
+    state.orderSpawnBase = Math.max(3.4, state.orderSpawnBase - 0.35);
+  }
+
+  if (announce) {
+    showToast(`Sucursal abierta manualmente: Zona ${target} desbloqueada.`, 2.8);
+  }
+
+  spawnOrder(1);
+  syncWorkersForUnlockedStorefronts();
+  syncPendingStoreUnlockFromProgress();
+  markDirty();
+  return true;
+}
+
+function handlePendingStoreUnlockTap() {
+  const target = syncPendingStoreUnlockFromProgress();
+  if (!target) {
+    return false;
+  }
+
+  if (state.unlockConfirmZone === target && state.unlockConfirmTimer > 0) {
+    state.unlockConfirmZone = null;
+    state.unlockConfirmTimer = 0;
+    openStorefront(target, true);
+    sound.play("upgrade");
+    buzz(16);
+    return true;
+  }
+
+  state.unlockConfirmZone = target;
+  state.unlockConfirmTimer = 6;
+  showToast(`Sucursal Z${target} lista. Toca CRECE otra vez para confirmar apertura.`, 2.8);
+  sound.play("ui");
+  return true;
 }
 
 function applyStoreCompletionBonus(zoneId) {
@@ -859,7 +1096,11 @@ function updateHud() {
   ui.money.textContent = `$${Math.floor(state.moneyDisplay)}`;
   ui.day.textContent = String(state.day);
   ui.rep.textContent = state.stars.toFixed(1);
-  ui.queue.textContent = `${state.orders.length}/${state.maxOrders}`;
+  if (state.gameMode === "city") {
+    ui.queue.textContent = `${state.cityUnits.length}/${totalCityLots()}`;
+  } else {
+    ui.queue.textContent = `${state.orders.length}/${state.maxOrders}`;
+  }
   ui.shops.textContent = String(state.businesses);
 }
 
@@ -906,6 +1147,14 @@ function resetProgress(cityKey = "usa") {
   state.autoPrepUnlocked = false;
   state.autoRunnerUnlocked = false;
   state.autoCleanerUnlocked = false;
+  state.gameMode = "pizza";
+  state.cityModeUnlocked = false;
+  state.cityUnits = [];
+  state.cityIncomeTimer = 0;
+  state.cityBuildCount = 0;
+  state.pendingStoreUnlock = null;
+  state.unlockConfirmZone = null;
+  state.unlockConfirmTimer = 0;
   state.prepWorkers = [];
   state.runnerWorkers = [];
   state.cleanerWorkers = [];
@@ -1495,6 +1744,12 @@ function buyUpgrade(zoneId = 1) {
     return;
   }
 
+  const pendingUnlock = syncPendingStoreUnlockFromProgress();
+  if (pendingUnlock) {
+    handlePendingStoreUnlockTap();
+    return;
+  }
+
   const upgrade = getStoreUpgradeOffer(zone.id);
   if (!upgrade) {
     showToast(`Zona ${zone.id} ya esta al maximo.`);
@@ -1531,19 +1786,24 @@ function buyUpgrade(zoneId = 1) {
   state.stars = clamp(state.stars + (upgrade.isPrestige ? 0.06 : 0.02), 0.8, 5);
 
   const localRushOrders = spawnOrderForZone(zone.id, upgrade.isPrestige ? 2 : 1, false);
-  const storefrontExpanded = syncBusinessExpansionByStoreProgress(true);
+  const unlockBefore = state.pendingStoreUnlock;
+  const unlockNow = syncPendingStoreUnlockFromProgress();
   syncWorkersForUnlockedStorefronts();
+
+  const unlockText = unlockNow ? ` | Nueva sucursal lista: Z${unlockNow}` : "";
+  const unlockNoticeTime = unlockNow && unlockNow !== unlockBefore ? 2.9 : 2.2;
 
   showToast(
     `Z${zone.id}: ${upgrade.name}${upgrade.isPrestige ? " completado" : ""} (+$${momentumBonus}${
       completionBonus > 0 ? ` + bono $${completionBonus}` : ""
-    }${localRushOrders > 0 ? " y mas clientes" : ""}).`
+    }${localRushOrders > 0 ? " y mas clientes" : ""})${unlockText}.`,
+    unlockNoticeTime
   );
   sound.play("upgrade");
   buzz(18);
 
-  if (storefrontExpanded) {
-    spawnOrder(1);
+  if (maybeUnlockCityMode(true)) {
+    return;
   }
 
   markDirty();
@@ -2323,6 +2583,35 @@ function drawStations() {
     ctx.strokeStyle = "#2a160d";
     ctx.strokeRect(sx, sy, station.w, station.h);
 
+    if (station.type === "upgrade" && state.pendingStoreUnlock) {
+      const armed = state.unlockConfirmZone === state.pendingStoreUnlock && state.unlockConfirmTimer > 0;
+      const pulse = 0.5 + Math.sin(performance.now() / 170) * 0.5;
+      ctx.save();
+      ctx.strokeStyle = armed
+        ? `rgba(255, 222, 135, ${0.58 + pulse * 0.34})`
+        : `rgba(118, 238, 158, ${0.48 + pulse * 0.34})`;
+      ctx.lineWidth = 2;
+      ctx.strokeRect(sx - 2, sy - 2, station.w + 4, station.h + 4);
+
+      const badgeW = 66;
+      const badgeH = 14;
+      const bx = sx + station.w - badgeW - 4;
+      const by = sy - 11;
+      ctx.fillStyle = armed ? "#ffe49f" : "#a4f0b8";
+      ctx.fillRect(bx, by, badgeW, badgeH);
+      ctx.strokeStyle = "#2a160d";
+      ctx.lineWidth = 1;
+      ctx.strokeRect(bx, by, badgeW, badgeH);
+      ctx.fillStyle = "#2a160d";
+      ctx.font = "bold 8px monospace";
+      ctx.fillText(
+        armed ? `CONFIRMAR Z${state.pendingStoreUnlock}` : `LISTA Z${state.pendingStoreUnlock}`,
+        bx + 4,
+        by + 9
+      );
+      ctx.restore();
+    }
+
     ctx.fillStyle = "#fff6de";
     ctx.font = "bold 11px monospace";
     ctx.fillText(station.label, sx + 8, sy + 15);
@@ -2331,21 +2620,32 @@ function drawStations() {
     drawStationIcon(station, sx + station.w - 16, sy + 38);
 
     if (station.type === "upgrade") {
-      const up = getStoreUpgradeOffer(station.zoneId);
-      const progress = getStoreProgress(station.zoneId);
-      const total = STORE_UPGRADE_STEPS.length;
       ctx.fillStyle = "rgba(12, 8, 4, 0.58)";
       ctx.fillRect(sx + 4, sy + station.h - 18, station.w - 8, 14);
       ctx.fillStyle = "#fff0cf";
       ctx.font = "10px monospace";
-      if (up) {
+      if (state.pendingStoreUnlock) {
+        const armed = state.unlockConfirmZone === state.pendingStoreUnlock && state.unlockConfirmTimer > 0;
         ctx.fillText(
-          `$${up.cost} ${up.name} L${progress.nextUpgrade}/${total} P${progress.prestigeLevel}`,
+          armed
+            ? `CONFIRMAR APERTURA Z${state.pendingStoreUnlock}`
+            : `LISTA Z${state.pendingStoreUnlock}: TOCA CRECE`,
           sx + 8,
           sy + station.h - 8
         );
       } else {
-        ctx.fillText(`MAX L${total}/${total}`, sx + 8, sy + station.h - 8);
+        const up = getStoreUpgradeOffer(station.zoneId);
+        const progress = getStoreProgress(station.zoneId);
+        const total = STORE_UPGRADE_STEPS.length;
+        if (up) {
+          ctx.fillText(
+            `$${up.cost} ${up.name} L${progress.nextUpgrade}/${total} P${progress.prestigeLevel}`,
+            sx + 8,
+            sy + station.h - 8
+          );
+        } else {
+          ctx.fillText(`MAX L${total}/${total}`, sx + 8, sy + station.h - 8);
+        }
       }
     }
   }
@@ -2612,12 +2912,23 @@ function drawNearbyHint() {
     if (station) {
       text = `Toca: ${station.label} (Z${station.zoneId})`;
       if (station.type === "upgrade") {
-        const up = getStoreUpgradeOffer(station.zoneId);
-        const progress = getStoreProgress(station.zoneId);
-        const total = STORE_UPGRADE_STEPS.length;
-        text = up
-          ? `Z${station.zoneId}: ${up.name} ($${up.cost}) ${progress.nextUpgrade}/${total} P${progress.prestigeLevel}`
-          : `Zona ${station.zoneId} al maximo ${total}/${total}`;
+        if (state.pendingStoreUnlock) {
+          const armed = state.unlockConfirmZone === state.pendingStoreUnlock && state.unlockConfirmTimer > 0;
+          text = armed
+            ? `Confirmar apertura Z${state.pendingStoreUnlock} (toca CRECE)`
+            : `Nueva sucursal lista Z${state.pendingStoreUnlock} (toca CRECE)`;
+        } else {
+          const up = getStoreUpgradeOffer(station.zoneId);
+          const progress = getStoreProgress(station.zoneId);
+          const total = STORE_UPGRADE_STEPS.length;
+          const unlock = nextStoreUnlockProgress();
+          text = up
+            ? `Z${station.zoneId}: ${up.name} ($${up.cost}) ${progress.nextUpgrade}/${total} P${progress.prestigeLevel}`
+            : `Zona ${station.zoneId} al maximo ${total}/${total}`;
+          if (unlock && unlock.remaining > 0) {
+            text += ` | Z${unlock.zone} en ${unlock.remaining}`;
+          }
+        }
       }
     }
   } else if (nearest.kind === "oven") {
@@ -2648,8 +2959,69 @@ function drawChaosTint() {
   }
 }
 
+function drawCityMode() {
+  const grad = ctx.createLinearGradient(0, 0, 0, WORLD.viewH);
+  grad.addColorStop(0, "#1d3a53");
+  grad.addColorStop(1, "#0f2433");
+  ctx.fillStyle = grad;
+  ctx.fillRect(0, 0, WORLD.viewW, WORLD.viewH);
+
+  const layout = getCityLayout();
+  ctx.fillStyle = "rgba(20, 36, 49, 0.7)";
+  ctx.fillRect(layout.x - 6, layout.y - 6, layout.gridW + 12, layout.gridH + 12);
+
+  for (let lotId = 0; lotId < totalCityLots(); lotId += 1) {
+    const lot = cityLotRect(lotId);
+    const unit = getCityUnitAtLot(lotId);
+    ctx.fillStyle = unit ? "#547a8e" : "#2a4659";
+    ctx.fillRect(lot.x, lot.y, lot.w, lot.h);
+    ctx.strokeStyle = "rgba(228, 241, 255, 0.2)";
+    ctx.strokeRect(lot.x, lot.y, lot.w, lot.h);
+
+    if (!unit) {
+      ctx.fillStyle = "rgba(230, 240, 250, 0.36)";
+      ctx.font = "bold 12px monospace";
+      ctx.fillText("+", lot.x + lot.w / 2 - 4, lot.y + lot.h / 2 + 4);
+      continue;
+    }
+
+    const level = clampInt(unit.level, 1, 20, 1);
+    const bodyH = Math.min(lot.h - 10, 10 + level * 2);
+    const bodyY = lot.y + lot.h - bodyH - 2;
+    ctx.fillStyle = "#ffd28c";
+    ctx.fillRect(lot.x + 4, bodyY, lot.w - 8, bodyH);
+    ctx.fillStyle = "#7f4b2c";
+    ctx.fillRect(lot.x + 4, bodyY, lot.w - 8, 4);
+
+    ctx.fillStyle = "#2d1708";
+    ctx.font = "bold 9px monospace";
+    ctx.fillText(`L${level}`, lot.x + 6, lot.y + 12);
+  }
+
+  ctx.fillStyle = "rgba(12, 21, 30, 0.82)";
+  ctx.fillRect(8, 8, WORLD.viewW - 16, 42);
+  ctx.fillStyle = "#f5e6c7";
+  ctx.font = "bold 12px monospace";
+  ctx.fillText("MODO CIUDAD", 14, 24);
+  ctx.font = "10px monospace";
+  ctx.fillText(`Unidades ${state.cityUnits.length}/${totalCityLots()}  Build $${getCityBuildCost()}`, 14, 40);
+
+  const income = totalCityIncome();
+  ctx.fillStyle = "rgba(12, 21, 30, 0.86)";
+  ctx.fillRect(8, WORLD.viewH - 32, WORLD.viewW - 16, 22);
+  ctx.fillStyle = "#d9f4cf";
+  ctx.font = "10px monospace";
+  ctx.fillText(`Toca lote vacio para construir o unidad para mejorar. Ingreso/ciclo: $${income}`, 14, WORLD.viewH - 17);
+}
+
 function render() {
   ctx.clearRect(0, 0, WORLD.viewW, WORLD.viewH);
+
+  if (state.gameMode === "city") {
+    drawCityMode();
+    return;
+  }
+
   drawStreetTiles();
   drawZoneDecor();
   drawStations();
@@ -2667,7 +3039,7 @@ function render() {
 
 function saveSnapshot() {
   return {
-    version: 8,
+    version: 9,
     ts: Date.now(),
     cityKey: state.cityKey,
     money: state.money,
@@ -2763,6 +3135,17 @@ function saveSnapshot() {
       stamina: player.stamina,
       carry: player.carry
     },
+    gameMode: state.gameMode,
+    cityModeUnlocked: state.cityModeUnlocked,
+    cityUnits: state.cityUnits.map((unit) => ({
+      lotId: unit.lotId,
+      level: unit.level
+    })),
+    cityIncomeTimer: state.cityIncomeTimer,
+    cityBuildCount: state.cityBuildCount,
+    pendingStoreUnlock: state.pendingStoreUnlock,
+    unlockConfirmZone: state.unlockConfirmZone,
+    unlockConfirmTimer: state.unlockConfirmTimer,
     muted: state.muted,
     dashAuto: state.dashAuto
   };
@@ -2893,8 +3276,45 @@ function sanitizeStoreProgressData(raw, fallback = null) {
   };
 }
 
+function readCityUnitsFromSave(rawUnits) {
+  const units = [];
+  const usedLots = new Set();
+  const maxLot = totalCityLots() - 1;
+
+  if (!Array.isArray(rawUnits)) {
+    return units;
+  }
+
+  for (const raw of rawUnits) {
+    if (!raw || typeof raw !== "object") {
+      continue;
+    }
+    const lotId = clampInt(raw.lotId, 0, maxLot, -1);
+    if (lotId < 0 || usedLots.has(lotId)) {
+      continue;
+    }
+    const level = clampInt(raw.level, 1, 20, 1);
+    usedLots.add(lotId);
+    units.push({ lotId, level });
+    if (units.length >= totalCityLots()) {
+      break;
+    }
+  }
+
+  return units;
+}
+
 function applySave(data) {
-  if (!data || (data.version !== 3 && data.version !== 4 && data.version !== 5 && data.version !== 6 && data.version !== 7 && data.version !== 8)) {
+  if (
+    !data ||
+    (data.version !== 3 &&
+      data.version !== 4 &&
+      data.version !== 5 &&
+      data.version !== 6 &&
+      data.version !== 7 &&
+      data.version !== 8 &&
+      data.version !== 9)
+  ) {
     return false;
   }
 
@@ -2971,7 +3391,24 @@ function applySave(data) {
     }
   }
 
-  syncBusinessExpansionByStoreProgress(false);
+  state.cityUnits = readCityUnitsFromSave(data.cityUnits);
+  state.cityIncomeTimer = clampNum(data.cityIncomeTimer, 0, 30, 0);
+  state.cityBuildCount = clampInt(data.cityBuildCount, 0, 9999, state.cityUnits.length);
+  const completedAllStores = completedStoreCount() >= ZONES.length;
+  state.cityModeUnlocked = Boolean(data.cityModeUnlocked) || completedAllStores || state.cityUnits.length > 0;
+  const savedMode = data.gameMode === "city" ? "city" : "pizza";
+  state.gameMode = state.cityModeUnlocked
+    ? (data.gameMode ? savedMode : "city")
+    : "pizza";
+
+  const pendingUnlock = syncPendingStoreUnlockFromProgress();
+  if (pendingUnlock && clampInt(data.unlockConfirmZone, 1, ZONES.length, 0) === pendingUnlock) {
+    state.unlockConfirmZone = pendingUnlock;
+    state.unlockConfirmTimer = clampNum(data.unlockConfirmTimer, 0, 8, 0);
+  } else {
+    state.unlockConfirmZone = null;
+    state.unlockConfirmTimer = 0;
+  }
   const unlockedZones = getUnlockedZones();
   const maxUnlockedZone = unlockedZones.length ? unlockedZones[unlockedZones.length - 1].id : 1;
 
@@ -3090,6 +3527,15 @@ function applySave(data) {
     player.carry = data.player.carry && typeof data.player.carry === "object" ? data.player.carry : null;
   }
 
+  if (state.gameMode === "city") {
+    WORLD.cameraX = 0;
+    WORLD.cameraY = 0;
+    state.moveTarget = null;
+    state.pendingInteract = null;
+    state.moving = false;
+    player.carry = null;
+  }
+
   syncCustomersWithOrders();
   updateSoundLabel();
   updateDashLabel();
@@ -3109,6 +3555,14 @@ function worldPointFromEvent(event) {
   };
 }
 
+function screenPointFromEvent(event) {
+  const rect = canvas.getBoundingClientRect();
+  return {
+    x: clamp(event.clientX - rect.left, 0, rect.width),
+    y: clamp(event.clientY - rect.top, 0, rect.height)
+  };
+}
+
 function isDoubleTapAt(point) {
   const now = performance.now();
   const withinTime = now - state.lastTapMs <= DOUBLE_TAP_MS;
@@ -3122,8 +3576,69 @@ function isDoubleTapAt(point) {
   return result;
 }
 
+function handleCityTap(event) {
+  if (!state.running || state.gameMode !== "city") {
+    return;
+  }
+
+  event.preventDefault();
+  sound.unlock();
+
+  const point = screenPointFromEvent(event);
+  const lotId = cityLotFromPoint(point.x, point.y);
+  if (lotId < 0) {
+    showToast("Toca un lote para construir.");
+    sound.play("fail");
+    return;
+  }
+
+  const unit = getCityUnitAtLot(lotId);
+  if (!unit) {
+    const cost = getCityBuildCost();
+    if (state.money < cost) {
+      showToast(`Necesitas $${cost} para construir una unidad.`);
+      sound.play("fail");
+      return;
+    }
+
+    state.money -= cost;
+    state.cityBuildCount += 1;
+    state.cityUnits.push({ lotId, level: 1 });
+    state.stars = clamp(state.stars + 0.01, 0.8, 5);
+    startMoneyTween(state.money, 0.34, 0.02);
+    showToast(`Unidad nueva creada por $${cost}.`);
+    sound.play("action");
+    buzz(10);
+    markDirty();
+    return;
+  }
+
+  const upgradeCost = getCityUpgradeCost(unit);
+  if (state.money < upgradeCost) {
+    showToast(`Mejora requiere $${upgradeCost}.`);
+    sound.play("fail");
+    return;
+  }
+
+  state.money -= upgradeCost;
+  unit.level = clampInt(unit.level + 1, 1, 20, 20);
+  if (unit.level % 4 === 0) {
+    state.stars = clamp(state.stars + 0.03, 0.8, 5);
+  }
+  startMoneyTween(state.money, 0.36, 0.03);
+  showToast(`Unidad mejorada a nivel ${unit.level}.`);
+  sound.play("upgrade");
+  buzz(8);
+  markDirty();
+}
+
 function handleMapTap(event) {
   if (!state.running) {
+    return;
+  }
+
+  if (state.gameMode === "city") {
+    handleCityTap(event);
     return;
   }
 
@@ -3274,11 +3789,23 @@ function startShift(fromSave = false) {
   state.running = true;
   ui.startOverlay.style.display = "none";
 
-  if (!fromSave && state.orders.length === 0) {
+  if (!fromSave && state.gameMode !== "city" && state.orders.length === 0) {
     spawnOrder(1);
   }
 
-  showToast(fromSave ? "Bienvenido de regreso. Turno reanudado." : "Turno iniciado. Toca para moverte. Doble toque para sprint.", 2.4);
+  if (state.gameMode === "city") {
+    showToast(
+      fromSave
+        ? "Modo Ciudad reanudado. Toca lotes para construir y escalar."
+        : "Nueva etapa: Modo Ciudad. Toca lotes para construir unidades.",
+      2.8
+    );
+  } else {
+    showToast(
+      fromSave ? "Bienvenido de regreso. Turno reanudado." : "Turno iniciado. Toca para moverte. Doble toque para sprint.",
+      2.4
+    );
+  }
   sound.play("success");
   markDirty();
 }
@@ -3288,29 +3815,45 @@ function tick(ts) {
   last = ts;
 
   if (state.running) {
-    updateMovement(dt);
-    updateOrders(dt);
-    updateCustomers(dt);
-    updateOvens(dt);
-    updateWorkers(dt);
-    updateDayProgress(dt);
-    updateSpills(dt);
+    if (state.gameMode === "city") {
+      updateCityMode(dt);
+    } else {
+      updateMovement(dt);
+      updateOrders(dt);
+      updateCustomers(dt);
+      updateOvens(dt);
+      updateWorkers(dt);
+      updateDayProgress(dt);
+      updateSpills(dt);
 
-    state.spawnTimer += dt;
-    const spawnRate = currentSpawnRate();
-    if (state.spawnTimer >= spawnRate) {
-      state.spawnTimer = 0;
-      spawnOrder(1);
-    }
+      state.spawnTimer += dt;
+      const spawnRate = currentSpawnRate();
+      if (state.spawnTimer >= spawnRate) {
+        state.spawnTimer = 0;
+        spawnOrder(1);
+      }
 
-    if (state.adDeskCooldown > 0) {
-      state.adDeskCooldown -= dt;
+      if (state.adDeskCooldown > 0) {
+        state.adDeskCooldown -= dt;
+      }
+
+      if (state.stars <= 1.0 && state.orders.length > 0) {
+        state.rushLevel = Math.max(1, state.rushLevel - dt * 0.5);
+      }
     }
 
     if (state.comboTimer > 0) {
       state.comboTimer -= dt;
       if (state.comboTimer <= 0) {
         state.combo = 0;
+      }
+    }
+
+    if (state.unlockConfirmTimer > 0) {
+      state.unlockConfirmTimer = Math.max(0, state.unlockConfirmTimer - dt);
+      if (state.unlockConfirmTimer <= 0) {
+        state.unlockConfirmTimer = 0;
+        state.unlockConfirmZone = null;
       }
     }
 
@@ -3321,10 +3864,6 @@ function tick(ts) {
         state.money += state.passiveIncome;
         markDirty();
       }
-    }
-
-    if (state.stars <= 1.0 && state.orders.length > 0) {
-      state.rushLevel = Math.max(1, state.rushLevel - dt * 0.5);
     }
   }
 
