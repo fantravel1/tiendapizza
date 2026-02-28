@@ -118,9 +118,10 @@ const state = {
   autoPrepUnlocked: false,
   autoRunnerUnlocked: false,
   autoCleanerUnlocked: false,
-  prepWorker: null,
-  runnerWorker: null,
-  cleanerWorker: null,
+  storeProgress: {},
+  prepWorkers: [],
+  runnerWorkers: [],
+  cleanerWorkers: [],
   keys: new Set(),
   dashAuto: false,
   moving: false,
@@ -154,12 +155,29 @@ const OVEN_HEIGHT = 54;
 const OVEN_HIT_RADIUS = 42;
 const DOUBLE_TAP_MS = 290;
 const DOUBLE_TAP_DISTANCE = 56;
+const STORE_UPGRADE_STEPS = [
+  { key: "turbo", name: "Turbo Horno", baseCost: 62 },
+  { key: "prep", name: "Ayudante", baseCost: 88 },
+  { key: "runner", name: "Repartidor", baseCost: 132 },
+  { key: "cleaner", name: "Limpieza", baseCost: 168 },
+  { key: "secondOven", name: "2do Horno", baseCost: 210 },
+  { key: "ads", name: "Volantes", baseCost: 185 },
+  { key: "tables", name: "Mas Mesas", baseCost: 255 },
+  { key: "manager", name: "Gerente", baseCost: 340 }
+];
+const STORE_EXPANSION_THRESHOLDS = {
+  2: 3,
+  3: 8
+};
+const UPGRADE_MOMENTUM_BONUS_RATE = 0.12;
 let selectedCampaign = "usa";
 let last = 0;
 
-function createPrepWorker() {
+function createPrepWorker(zoneId = 1) {
+  const zone = zoneById(zoneId);
   return {
-    x: 120,
+    zoneId: zone.id,
+    x: zone.xMin + 120,
     y: 330,
     state: "toDough",
     carry: null,
@@ -167,18 +185,22 @@ function createPrepWorker() {
   };
 }
 
-function createRunnerWorker() {
+function createRunnerWorker(zoneId = 1) {
+  const zone = zoneById(zoneId);
   return {
-    x: 660,
+    zoneId: zone.id,
+    x: zone.xMin + 660,
     y: 330,
     carry: null,
     targetOvenId: null
   };
 }
 
-function createCleanerWorker() {
+function createCleanerWorker(zoneId = 1) {
+  const zone = zoneById(zoneId);
   return {
-    x: 560,
+    zoneId: zone.id,
+    x: zone.xMin + 560,
     y: 468,
     state: "idle"
   };
@@ -325,6 +347,282 @@ function getMaxReachX() {
   return lastZone.xMax;
 }
 
+function createStoreProgressEntry() {
+  return {
+    nextUpgrade: 0,
+    autoPrep: false,
+    autoRunner: false,
+    autoCleaner: false,
+    secondOven: false,
+    prestigeLevel: 0,
+    completions: 0
+  };
+}
+
+function createDefaultStoreProgress() {
+  const progress = {};
+  for (const zone of ZONES) {
+    progress[zone.id] = createStoreProgressEntry();
+  }
+  return progress;
+}
+
+function getStoreProgress(zoneId) {
+  const normalized = clampInt(zoneId, 1, ZONES.length, 1);
+  const key = String(normalized);
+  if (!state.storeProgress || typeof state.storeProgress !== "object") {
+    state.storeProgress = createDefaultStoreProgress();
+  }
+  if (!state.storeProgress[key] || typeof state.storeProgress[key] !== "object") {
+    state.storeProgress[key] = createStoreProgressEntry();
+  }
+  return state.storeProgress[key];
+}
+
+function getZoneSecondOvenId(zoneId) {
+  return `z${zoneId}-second`;
+}
+
+function ensureZoneSecondOven(zoneId, bakeTime = 3.9) {
+  const zone = zoneById(zoneId);
+  const id = getZoneSecondOvenId(zone.id);
+  const existing = state.ovens.find((oven) => oven.id === id);
+  const x = zone.xMin + 588;
+  const y = 226;
+
+  if (existing) {
+    existing.zoneId = zone.id;
+    existing.x = x;
+    existing.y = y;
+    existing.minBusinesses = zone.minBusinesses;
+    existing.bakeTime = clampNum(existing.bakeTime, 2.2, 12, bakeTime);
+    return existing;
+  }
+
+  const oven = createOven(id, zone.id, x, y, bakeTime, zone.minBusinesses);
+  state.ovens.push(oven);
+  return oven;
+}
+
+function totalStoreUpgradesPurchased() {
+  let total = 0;
+  for (const zone of ZONES) {
+    total += clampInt(getStoreProgress(zone.id).nextUpgrade, 0, STORE_UPGRADE_STEPS.length, 0);
+  }
+  return total;
+}
+
+function totalStorePrestigeLevels() {
+  let total = 0;
+  for (const zone of ZONES) {
+    total += clampInt(getStoreProgress(zone.id).prestigeLevel, 0, 99, 0);
+  }
+  return total;
+}
+
+function zoneRevenueMultiplier(zoneId) {
+  const progress = getStoreProgress(zoneId);
+  const prestige = clampInt(progress.prestigeLevel, 0, 99, 0);
+  const completions = clampInt(progress.completions, 0, 999, 0);
+  return 1 + prestige * 0.11 + Math.max(0, completions - 1) * 0.03;
+}
+
+function syncBusinessExpansionByStoreProgress(showToasts = true) {
+  const before = state.businesses;
+  const total = totalStoreUpgradesPurchased();
+
+  if (total >= STORE_EXPANSION_THRESHOLDS[2]) {
+    state.businesses = Math.max(state.businesses, 2);
+  }
+  if (total >= STORE_EXPANSION_THRESHOLDS[3]) {
+    state.businesses = Math.max(state.businesses, 3);
+  }
+
+  if (state.businesses > before) {
+    for (let next = before + 1; next <= state.businesses; next += 1) {
+      if (next === 2) {
+        state.passiveIncome += 3;
+        state.maxOrders += 2;
+      } else if (next === 3) {
+        state.passiveIncome += 4;
+        state.maxOrders += 2;
+        state.orderSpawnBase = Math.max(3.4, state.orderSpawnBase - 0.35);
+      }
+
+      if (!showToasts) {
+        continue;
+      }
+      if (next === 2) {
+        showToast("Segunda sucursal desbloqueada.", 2.3);
+      } else if (next === 3) {
+        showToast("Tercera sucursal desbloqueada.", 2.3);
+      }
+    }
+  }
+
+  return state.businesses > before;
+}
+
+function applyStoreCompletionBonus(zoneId) {
+  const zone = zoneById(zoneId);
+  const progress = getStoreProgress(zone.id);
+  progress.completions = clampInt(progress.completions + 1, 0, 999, 999);
+
+  const bonus = Math.round(92 + zone.id * 34 + progress.completions * 24);
+  state.money += bonus;
+  const station = getStationByTypeForZone("upgrade", zone.id);
+  const payoutPoint = station ? stationCenter(station) : { x: player.x, y: player.y };
+  spawnMoneyFly(payoutPoint.x, payoutPoint.y, bonus);
+  startMoneyTween(state.money, 0.48, 0.1);
+  state.maxOrders += 1;
+  state.stars = clamp(state.stars + 0.06, 0.8, 5);
+  spawnOrderForZone(zone.id, 1, false);
+  return bonus;
+}
+
+function applyStorePrestige(zoneId) {
+  const zone = zoneById(zoneId);
+  const progress = getStoreProgress(zone.id);
+  progress.prestigeLevel = clampInt(progress.prestigeLevel + 1, 0, 99, 99);
+  progress.nextUpgrade = 0;
+  progress.autoPrep = false;
+  progress.autoRunner = false;
+  progress.autoCleaner = false;
+  progress.secondOven = false;
+
+  state.ovens = state.ovens.filter((oven) => oven.id !== getZoneSecondOvenId(zone.id));
+  for (const oven of getZoneOvens(zone.id)) {
+    oven.bakeTime = Math.max(1.9, oven.bakeTime - 0.14);
+  }
+
+  state.passiveIncome += 1 + zone.id;
+  state.payoutMultiplier += 0.015;
+  state.stars = clamp(state.stars + 0.08, 0.8, 5);
+}
+
+function getStoreUpgradeOffer(zoneId) {
+  const zone = zoneById(zoneId);
+  const progress = getStoreProgress(zone.id);
+  const idx = clampInt(progress.nextUpgrade, 0, STORE_UPGRADE_STEPS.length, 0);
+  if (idx >= STORE_UPGRADE_STEPS.length) {
+    const prestigeLevel = clampInt(progress.prestigeLevel, 0, 99, 0);
+    const cost = Math.round((220 + zone.id * 90) * (1 + prestigeLevel * 0.58));
+    return {
+      name: `Prestigio ${prestigeLevel + 1}`,
+      cost,
+      isPrestige: true,
+      apply: () => {
+        applyStorePrestige(zone.id);
+      }
+    };
+  }
+
+  const step = STORE_UPGRADE_STEPS[idx];
+  const zoneMultiplier = 1 + (zone.id - 1) * 0.16;
+  const prestigeMultiplier = 1 + clampInt(progress.prestigeLevel, 0, 99, 0) * 0.3;
+  const cost = Math.round(step.baseCost * zoneMultiplier * prestigeMultiplier);
+
+  return {
+    name: step.name,
+    cost,
+    isPrestige: false,
+    apply: () => {
+      if (step.key === "turbo") {
+        for (const oven of getZoneOvens(zone.id)) {
+          oven.bakeTime = Math.max(2.2, oven.bakeTime - 0.7);
+        }
+        return;
+      }
+      if (step.key === "prep") {
+        progress.autoPrep = true;
+        return;
+      }
+      if (step.key === "runner") {
+        progress.autoRunner = true;
+        return;
+      }
+      if (step.key === "cleaner") {
+        progress.autoCleaner = true;
+        return;
+      }
+      if (step.key === "secondOven") {
+        progress.secondOven = true;
+        ensureZoneSecondOven(zone.id, 3.9 - (zone.id - 1) * 0.1);
+        return;
+      }
+      if (step.key === "ads") {
+        state.maxOrders += 1;
+        state.orderSpawnBase = Math.max(3.2, state.orderSpawnBase - 0.22);
+        return;
+      }
+      if (step.key === "tables") {
+        state.patienceBoost += 1;
+        state.stars = clamp(state.stars + 0.12, 0.8, 5);
+        return;
+      }
+      if (step.key === "manager") {
+        state.passiveIncome += 1 + zone.id;
+        state.payoutMultiplier += 0.03;
+        state.stars = clamp(state.stars + 0.1, 0.8, 5);
+      }
+    }
+  };
+}
+
+function syncLegacyWorkerFlagsFromStoreProgress() {
+  const unlockedZones = getUnlockedZones();
+  state.autoPrepUnlocked = unlockedZones.some((zone) => getStoreProgress(zone.id).autoPrep);
+  state.autoRunnerUnlocked = unlockedZones.some((zone) => getStoreProgress(zone.id).autoRunner);
+  state.autoCleanerUnlocked = unlockedZones.some((zone) => getStoreProgress(zone.id).autoCleaner);
+  state.secondOvenUnlocked = Boolean(getStoreProgress(1).secondOven);
+  state.nextUpgrade = clampInt(getStoreProgress(1).nextUpgrade, 0, STORE_UPGRADE_STEPS.length, 0);
+}
+
+function syncWorkersForUnlockedStorefronts() {
+  const unlockedZones = getUnlockedZones();
+  const unlockedIds = new Set(unlockedZones.map((zone) => zone.id));
+  let changed = false;
+
+  const syncType = (workers, shouldHaveWorker, createWorker) => {
+    const source = Array.isArray(workers) ? workers : [];
+    const byZone = new Map();
+    for (const worker of source) {
+      if (!worker || typeof worker !== "object") {
+        changed = true;
+        continue;
+      }
+      const zoneId = clampInt(worker.zoneId, 1, ZONES.length, 1);
+      if (!unlockedIds.has(zoneId) || !shouldHaveWorker(zoneId) || byZone.has(zoneId)) {
+        changed = true;
+        continue;
+      }
+      byZone.set(zoneId, { ...worker, zoneId });
+    }
+
+    const next = [];
+    for (const zone of unlockedZones) {
+      if (!shouldHaveWorker(zone.id)) {
+        continue;
+      }
+      const existing = byZone.get(zone.id);
+      if (existing) {
+        next.push(existing);
+      } else {
+        next.push(createWorker(zone.id));
+        changed = true;
+      }
+    }
+    return next;
+  };
+
+  state.prepWorkers = syncType(state.prepWorkers, (zoneId) => getStoreProgress(zoneId).autoPrep, createPrepWorker);
+  state.runnerWorkers = syncType(state.runnerWorkers, (zoneId) => getStoreProgress(zoneId).autoRunner, createRunnerWorker);
+  state.cleanerWorkers = syncType(state.cleanerWorkers, (zoneId) => getStoreProgress(zoneId).autoCleaner, createCleanerWorker);
+  syncLegacyWorkerFlagsFromStoreProgress();
+
+  return changed;
+}
+
 function createStation(id, type, zoneId, x, y, w, h, color, label, minBusinesses) {
   return { id, type, zoneId, x, y, w, h, color, label, minBusinesses };
 }
@@ -355,10 +653,10 @@ function buildStations() {
     stations.push(createStation(`z${zone.id}-cheese`, "cheese", zone.id, x0 + 374, 220, 92, 70, "#f0ce5d", "QUESO", minBusinesses));
     stations.push(createStation(`z${zone.id}-counter`, "counter", zone.id, x0 + 626, 206, 146, 84, "#7f5532", "MOSTR", minBusinesses));
     stations.push(createStation(`z${zone.id}-mop`, "mop", zone.id, x0 + 514, 388, 118, 76, "#8b562a", "TRAPO", minBusinesses));
+    stations.push(createStation(`z${zone.id}-upgrade`, "upgrade", zone.id, x0 + 338, 388, 154, 76, "#1f7f40", "CRECE", minBusinesses));
 
     if (zone.id === 1) {
       stations.push(createStation("z1-ads", "ads", 1, x0 + 186, 388, 124, 76, "#225f95", "ANUN", 1));
-      stations.push(createStation("z1-upgrade", "upgrade", 1, x0 + 338, 388, 154, 76, "#1f7f40", "CRECE", 1));
     }
   }
 
@@ -389,7 +687,7 @@ function buildUpgrades() {
       cost: 110,
       apply: () => {
         state.autoPrepUnlocked = true;
-        showToast("Ayudante contratado: cocina automatica en Tienda 1.");
+        showToast("Ayudante contratado en cada sucursal desbloqueada.");
       }
     },
     {
@@ -397,7 +695,7 @@ function buildUpgrades() {
       cost: 190,
       apply: () => {
         state.autoRunnerUnlocked = true;
-        showToast("Repartidor contratado: horno a mostrador en Tienda 1.");
+        showToast("Repartidor contratado en cada sucursal desbloqueada.");
       }
     },
     {
@@ -603,13 +901,14 @@ function resetProgress(cityKey = "usa") {
   state.upgrades = buildUpgrades();
   state.nextUpgrade = 0;
   state.passiveIncome = 0;
+  state.storeProgress = createDefaultStoreProgress();
   state.secondOvenUnlocked = false;
   state.autoPrepUnlocked = false;
   state.autoRunnerUnlocked = false;
   state.autoCleanerUnlocked = false;
-  state.prepWorker = createPrepWorker();
-  state.runnerWorker = createRunnerWorker();
-  state.cleanerWorker = createCleanerWorker();
+  state.prepWorkers = [];
+  state.runnerWorkers = [];
+  state.cleanerWorkers = [];
   state.keys.clear();
   state.dashAuto = false;
   state.moving = false;
@@ -635,6 +934,7 @@ function resetProgress(cityKey = "usa") {
 
   ui.startOverlay.style.display = "grid";
   setCampaignChoice(cityKey);
+  syncLegacyWorkerFlagsFromStoreProgress();
   updateDashLabel();
   updateHud();
 }
@@ -712,6 +1012,35 @@ function randomChoice(items) {
     return null;
   }
   return items[Math.floor(Math.random() * items.length)];
+}
+
+function weightedZoneChoice(zones) {
+  if (!zones.length) {
+    return null;
+  }
+
+  const weighted = zones.map((zone) => {
+    const progress = getStoreProgress(zone.id);
+    const level = clampInt(progress.nextUpgrade, 0, STORE_UPGRADE_STEPS.length, 0);
+    const prestige = clampInt(progress.prestigeLevel, 0, 99, 0);
+    const weight = 1 + level * 0.08 + prestige * 0.22;
+    return { zone, weight: Math.max(0.1, weight) };
+  });
+
+  const total = weighted.reduce((sum, entry) => sum + entry.weight, 0);
+  if (total <= 0) {
+    return randomChoice(zones);
+  }
+
+  let pick = Math.random() * total;
+  for (const entry of weighted) {
+    pick -= entry.weight;
+    if (pick <= 0) {
+      return entry.zone;
+    }
+  }
+
+  return weighted[weighted.length - 1].zone;
 }
 
 function pointDistance(ax, ay, bx, by) {
@@ -1030,38 +1359,80 @@ function spawnCustomerForOrder(order) {
   state.customerId += 1;
 }
 
-function spawnOrder(count = 1) {
-  const unlockedZones = getUnlockedZones();
-  if (!unlockedZones.length) {
-    return;
+function createOrderForZone(zone) {
+  const patience = Math.max(8, 28 + Math.random() * 16 - state.day * 0.75 + state.patienceBoost - zone.id * 0.8);
+  const baseValue = 18 + state.day * 2 + Math.floor(Math.random() * 8);
+  const value = Math.floor(
+    baseValue * (0.95 + state.businesses * 0.06) * state.payoutMultiplier * (1 + zone.id * 0.02) * zoneRevenueMultiplier(zone.id)
+  );
+
+  return {
+    id: state.orderId,
+    zoneId: zone.id,
+    patience,
+    maxPatience: patience,
+    countdownStarted: false,
+    value
+  };
+}
+
+function spawnOrderForZone(zoneId, count = 1, playTone = true) {
+  const zone = zoneById(zoneId);
+  if (zone.minBusinesses > state.businesses) {
+    return 0;
   }
 
+  let spawned = 0;
   for (let i = 0; i < count; i += 1) {
     if (state.orders.length >= state.maxOrders) {
-      return;
+      break;
     }
-
-    const zone = randomChoice(unlockedZones);
-    const patience = Math.max(8, 28 + Math.random() * 16 - state.day * 0.75 + state.patienceBoost - zone.id * 0.8);
-    const baseValue = 18 + state.day * 2 + Math.floor(Math.random() * 8);
-    const value = Math.floor(baseValue * (0.95 + state.businesses * 0.06) * state.payoutMultiplier * (1 + zone.id * 0.02));
-
-    const order = {
-      id: state.orderId,
-      zoneId: zone.id,
-      patience,
-      maxPatience: patience,
-      countdownStarted: false,
-      value
-    };
-
+    const order = createOrderForZone(zone);
     state.orders.push(order);
     spawnCustomerForOrder(order);
     state.orderId += 1;
+    spawned += 1;
   }
 
-  sound.play("order");
-  markDirty();
+  if (spawned > 0) {
+    if (playTone) {
+      sound.play("order");
+    }
+    markDirty();
+  }
+
+  return spawned;
+}
+
+function spawnOrder(count = 1) {
+  const unlockedZones = getUnlockedZones();
+  if (!unlockedZones.length) {
+    return 0;
+  }
+
+  let spawned = 0;
+  for (let i = 0; i < count; i += 1) {
+    if (state.orders.length >= state.maxOrders) {
+      break;
+    }
+
+    const zone = weightedZoneChoice(unlockedZones);
+    if (!zone) {
+      continue;
+    }
+
+    const order = createOrderForZone(zone);
+    state.orders.push(order);
+    spawnCustomerForOrder(order);
+    state.orderId += 1;
+    spawned += 1;
+  }
+
+  if (spawned > 0) {
+    sound.play("order");
+    markDirty();
+  }
+  return spawned;
 }
 
 function sendCustomerHome(orderId, angry = false) {
@@ -1116,32 +1487,63 @@ function runAdCampaign() {
   return true;
 }
 
-function buyUpgrade() {
-  if (state.nextUpgrade >= state.upgrades.length) {
-    showToast("Ya desbloqueaste todas las mejoras.");
+function buyUpgrade(zoneId = 1) {
+  const zone = zoneById(zoneId);
+  if (zone.minBusinesses > state.businesses) {
+    showToast(`La Zona ${zone.id} aun no esta disponible.`);
     sound.play("fail");
     return;
   }
 
-  const upgrade = state.upgrades[state.nextUpgrade];
+  const upgrade = getStoreUpgradeOffer(zone.id);
+  if (!upgrade) {
+    showToast(`Zona ${zone.id} ya esta al maximo.`);
+    sound.play("fail");
+    return;
+  }
+
   if (state.money < upgrade.cost) {
-    showToast(`${upgrade.name} requiere $${upgrade.cost}.`);
+    showToast(`Zona ${zone.id}: ${upgrade.name} requiere $${upgrade.cost}.`);
     sound.play("fail");
     return;
   }
 
-  const before = state.businesses;
-
+  const progress = getStoreProgress(zone.id);
+  const beforeLevel = clampInt(progress.nextUpgrade, 0, STORE_UPGRADE_STEPS.length, 0);
   state.money -= upgrade.cost;
   upgrade.apply();
-  state.nextUpgrade += 1;
+  if (!upgrade.isPrestige) {
+    progress.nextUpgrade = clampInt(progress.nextUpgrade + 1, 0, STORE_UPGRADE_STEPS.length, STORE_UPGRADE_STEPS.length);
+  }
 
-  showToast(`Desbloqueado: ${upgrade.name}`);
+  let completionBonus = 0;
+  if (!upgrade.isPrestige && beforeLevel < STORE_UPGRADE_STEPS.length && progress.nextUpgrade >= STORE_UPGRADE_STEPS.length) {
+    completionBonus = applyStoreCompletionBonus(zone.id);
+  }
+
+  const momentumRate = upgrade.isPrestige ? UPGRADE_MOMENTUM_BONUS_RATE * 1.7 : UPGRADE_MOMENTUM_BONUS_RATE;
+  const momentumBonus = Math.max(5, Math.round(upgrade.cost * momentumRate));
+  state.money += momentumBonus;
+  const station = getStationByTypeForZone("upgrade", zone.id);
+  const payoutPoint = station ? stationCenter(station) : { x: player.x, y: player.y };
+  spawnMoneyFly(payoutPoint.x, payoutPoint.y, momentumBonus);
+  startMoneyTween(state.money, 0.44, 0.08);
+  state.stars = clamp(state.stars + (upgrade.isPrestige ? 0.06 : 0.02), 0.8, 5);
+
+  const localRushOrders = spawnOrderForZone(zone.id, upgrade.isPrestige ? 2 : 1, false);
+  const storefrontExpanded = syncBusinessExpansionByStoreProgress(true);
+  syncWorkersForUnlockedStorefronts();
+
+  showToast(
+    `Z${zone.id}: ${upgrade.name}${upgrade.isPrestige ? " completado" : ""} (+$${momentumBonus}${
+      completionBonus > 0 ? ` + bono $${completionBonus}` : ""
+    }${localRushOrders > 0 ? " y mas clientes" : ""}).`
+  );
   sound.play("upgrade");
   buzz(18);
 
-  if (state.businesses > before) {
-    spawnOrder(2);
+  if (storefrontExpanded) {
+    spawnOrder(1);
   }
 
   markDirty();
@@ -1208,15 +1610,15 @@ function serveOrderByWorker(zoneId, payoutPoint) {
   return true;
 }
 
-function updatePrepWorker(dt) {
-  if (!state.autoPrepUnlocked || !state.prepWorker) {
+function updatePrepWorker(worker, dt) {
+  if (!worker) {
     return;
   }
 
-  const worker = state.prepWorker;
-  const dough = getStationByTypeForZone("dough", 1);
-  const sauce = getStationByTypeForZone("sauce", 1);
-  const cheese = getStationByTypeForZone("cheese", 1);
+  const zoneId = clampInt(worker.zoneId, 1, ZONES.length, 1);
+  const dough = getStationByTypeForZone("dough", zoneId);
+  const sauce = getStationByTypeForZone("sauce", zoneId);
+  const cheese = getStationByTypeForZone("cheese", zoneId);
   if (!dough || !sauce || !cheese) {
     return;
   }
@@ -1224,7 +1626,7 @@ function updatePrepWorker(dt) {
   const doughC = stationCenter(dough);
   const sauceC = stationCenter(sauce);
   const cheeseC = stationCenter(cheese);
-  const speed = 88;
+  const speed = 88 * (1 + clampInt(getStoreProgress(zoneId).prestigeLevel, 0, 99, 0) * 0.03);
 
   if (worker.state === "toDough") {
     if (moveActorToward(worker, doughC.x, doughC.y, speed, dt)) {
@@ -1255,7 +1657,7 @@ function updatePrepWorker(dt) {
       worker.state = "toDough";
       return;
     }
-    const openOven = getAvailableZoneOven(1);
+    const openOven = getAvailableZoneOven(zoneId);
     if (openOven) {
       worker.targetOvenId = openOven.id;
       worker.state = "toOven";
@@ -1271,8 +1673,8 @@ function updatePrepWorker(dt) {
     }
 
     let targetOven = worker.targetOvenId ? findOvenById(worker.targetOvenId) : null;
-    if (!targetOven || targetOven.zoneId !== 1 || !isOvenUnlocked(targetOven) || targetOven.busy || targetOven.ready) {
-      targetOven = getAvailableZoneOven(1);
+    if (!targetOven || targetOven.zoneId !== zoneId || !isOvenUnlocked(targetOven) || targetOven.busy || targetOven.ready) {
+      targetOven = getAvailableZoneOven(zoneId);
       worker.targetOvenId = targetOven ? targetOven.id : null;
     }
 
@@ -1301,24 +1703,24 @@ function updatePrepWorker(dt) {
   worker.state = "toDough";
 }
 
-function updateRunnerWorker(dt) {
-  if (!state.autoRunnerUnlocked || !state.runnerWorker) {
+function updateRunnerWorker(worker, dt) {
+  if (!worker) {
     return;
   }
 
-  const worker = state.runnerWorker;
-  const counter = getCounterStationForZone(1);
+  const zoneId = clampInt(worker.zoneId, 1, ZONES.length, 1);
+  const counter = getCounterStationForZone(zoneId);
   if (!counter) {
     return;
   }
 
   const counterC = stationCenter(counter);
-  const speed = 96;
+  const speed = 96 * (1 + clampInt(getStoreProgress(zoneId).prestigeLevel, 0, 99, 0) * 0.03);
 
   if (!worker.carry) {
     let targetOven = worker.targetOvenId ? findOvenById(worker.targetOvenId) : null;
-    if (!targetOven || targetOven.zoneId !== 1 || !isOvenUnlocked(targetOven) || !targetOven.ready) {
-      targetOven = getZoneOvens(1).find((oven) => oven.ready) || null;
+    if (!targetOven || targetOven.zoneId !== zoneId || !isOvenUnlocked(targetOven) || !targetOven.ready) {
+      targetOven = getZoneOvens(zoneId).find((oven) => oven.ready) || null;
       worker.targetOvenId = targetOven ? targetOven.id : null;
     }
 
@@ -1340,25 +1742,25 @@ function updateRunnerWorker(dt) {
   }
 
   if (moveActorToward(worker, counterC.x, counterC.y, speed, dt)) {
-    if (serveOrderByWorker(1, counterC)) {
+    if (serveOrderByWorker(zoneId, counterC)) {
       worker.carry = null;
       sound.play("success");
     }
   }
 }
 
-function updateCleanerWorker(dt) {
-  if (!state.autoCleanerUnlocked || !state.cleanerWorker) {
+function updateCleanerWorker(worker, dt) {
+  if (!worker) {
     return;
   }
 
-  const worker = state.cleanerWorker;
-  const mop = getStationByTypeForZone("mop", 1);
+  const zoneId = clampInt(worker.zoneId, 1, ZONES.length, 1);
+  const mop = getStationByTypeForZone("mop", zoneId);
   if (!mop) {
     return;
   }
   const mopC = stationCenter(mop);
-  const speed = 84;
+  const speed = 84 * (1 + clampInt(getStoreProgress(zoneId).prestigeLevel, 0, 99, 0) * 0.03);
 
   if (state.spillActive) {
     worker.state = "cleaning";
@@ -1378,9 +1780,19 @@ function updateCleanerWorker(dt) {
 }
 
 function updateWorkers(dt) {
-  updatePrepWorker(dt);
-  updateRunnerWorker(dt);
-  updateCleanerWorker(dt);
+  syncWorkersForUnlockedStorefronts();
+
+  for (const worker of state.prepWorkers) {
+    updatePrepWorker(worker, dt);
+  }
+
+  for (const worker of state.runnerWorkers) {
+    updateRunnerWorker(worker, dt);
+  }
+
+  for (const worker of state.cleanerWorkers) {
+    updateCleanerWorker(worker, dt);
+  }
 }
 
 function interactWithStation(station) {
@@ -1451,7 +1863,7 @@ function interactWithStation(station) {
   }
 
   if (station.type === "upgrade") {
-    buyUpgrade();
+    buyUpgrade(station.zoneId);
     return;
   }
 
@@ -1655,7 +2067,9 @@ function updateOrders(dt) {
 function currentSpawnRate() {
   const ramp = clamp((state.day - 1) / 7, 0, 1);
   const earlyBuffer = (1 - ramp) * 2.8;
-  const pressure = state.adBoost * 0.18 + state.day * 0.16 + state.businesses * 0.12;
+  const upgradePressure = totalStoreUpgradesPurchased() * 0.035;
+  const prestigePressure = totalStorePrestigeLevels() * 0.055;
+  const pressure = state.adBoost * 0.18 + state.day * 0.16 + state.businesses * 0.12 + upgradePressure + prestigePressure;
   return Math.max(2.8, state.orderSpawnBase + earlyBuffer - pressure);
 }
 
@@ -1859,6 +2273,13 @@ function drawZoneDecor() {
     ctx.font = "bold 12px monospace";
     ctx.fillText(`ZONA ${zone.id}: ${zone.name}`, x + 20, 31 - WORLD.cameraY);
 
+    const progress = getStoreProgress(zone.id);
+    if (progress.prestigeLevel > 0 || progress.completions > 0) {
+      ctx.fillStyle = "#ffe9bc";
+      ctx.font = "bold 9px monospace";
+      ctx.fillText(`P${progress.prestigeLevel} C${progress.completions}`, x + 218, 31 - WORLD.cameraY);
+    }
+
     if (zone.minBusinesses > state.businesses) {
       ctx.fillStyle = "rgba(15, 10, 6, 0.56)";
       ctx.fillRect(x, -WORLD.cameraY, w, WORLD.height);
@@ -1909,13 +2330,23 @@ function drawStations() {
 
     drawStationIcon(station, sx + station.w - 16, sy + 38);
 
-    if (station.type === "upgrade" && state.nextUpgrade < state.upgrades.length) {
-      const up = state.upgrades[state.nextUpgrade];
+    if (station.type === "upgrade") {
+      const up = getStoreUpgradeOffer(station.zoneId);
+      const progress = getStoreProgress(station.zoneId);
+      const total = STORE_UPGRADE_STEPS.length;
       ctx.fillStyle = "rgba(12, 8, 4, 0.58)";
       ctx.fillRect(sx + 4, sy + station.h - 18, station.w - 8, 14);
       ctx.fillStyle = "#fff0cf";
       ctx.font = "10px monospace";
-      ctx.fillText(`$${up.cost} ${up.name}`, sx + 8, sy + station.h - 8);
+      if (up) {
+        ctx.fillText(
+          `$${up.cost} ${up.name} L${progress.nextUpgrade}/${total} P${progress.prestigeLevel}`,
+          sx + 8,
+          sy + station.h - 8
+        );
+      } else {
+        ctx.fillText(`MAX L${total}/${total}`, sx + 8, sy + station.h - 8);
+      }
     }
   }
 
@@ -2057,14 +2488,14 @@ function drawWorker(worker, color, label, carry = null) {
 }
 
 function drawWorkers() {
-  if (state.autoPrepUnlocked) {
-    drawWorker(state.prepWorker, "#4a9f5b", "COC", state.prepWorker ? state.prepWorker.carry : null);
+  for (const worker of state.prepWorkers) {
+    drawWorker(worker, "#4a9f5b", "COC", worker ? worker.carry : null);
   }
-  if (state.autoRunnerUnlocked) {
-    drawWorker(state.runnerWorker, "#4f73b8", "RUN", state.runnerWorker ? state.runnerWorker.carry : null);
+  for (const worker of state.runnerWorkers) {
+    drawWorker(worker, "#4f73b8", "RUN", worker ? worker.carry : null);
   }
-  if (state.autoCleanerUnlocked) {
-    drawWorker(state.cleanerWorker, "#ad7f3c", "LIM", null);
+  for (const worker of state.cleanerWorkers) {
+    drawWorker(worker, "#ad7f3c", "LIM", null);
   }
 }
 
@@ -2180,9 +2611,13 @@ function drawNearbyHint() {
     const station = findStationById(nearest.id);
     if (station) {
       text = `Toca: ${station.label} (Z${station.zoneId})`;
-      if (station.type === "upgrade" && state.nextUpgrade < state.upgrades.length) {
-        const up = state.upgrades[state.nextUpgrade];
-        text = `${up.name} ($${up.cost})`;
+      if (station.type === "upgrade") {
+        const up = getStoreUpgradeOffer(station.zoneId);
+        const progress = getStoreProgress(station.zoneId);
+        const total = STORE_UPGRADE_STEPS.length;
+        text = up
+          ? `Z${station.zoneId}: ${up.name} ($${up.cost}) ${progress.nextUpgrade}/${total} P${progress.prestigeLevel}`
+          : `Zona ${station.zoneId} al maximo ${total}/${total}`;
       }
     }
   } else if (nearest.kind === "oven") {
@@ -2232,7 +2667,7 @@ function render() {
 
 function saveSnapshot() {
   return {
-    version: 5,
+    version: 8,
     ts: Date.now(),
     cityKey: state.cityKey,
     money: state.money,
@@ -2290,9 +2725,25 @@ function saveSnapshot() {
     autoPrepUnlocked: state.autoPrepUnlocked,
     autoRunnerUnlocked: state.autoRunnerUnlocked,
     autoCleanerUnlocked: state.autoCleanerUnlocked,
-    prepWorker: state.prepWorker,
-    runnerWorker: state.runnerWorker,
-    cleanerWorker: state.cleanerWorker,
+    storeProgress: ZONES.reduce((acc, zone) => {
+      const progress = getStoreProgress(zone.id);
+      acc[zone.id] = {
+        nextUpgrade: clampInt(progress.nextUpgrade, 0, STORE_UPGRADE_STEPS.length, 0),
+        autoPrep: Boolean(progress.autoPrep),
+        autoRunner: Boolean(progress.autoRunner),
+        autoCleaner: Boolean(progress.autoCleaner),
+        secondOven: Boolean(progress.secondOven),
+        prestigeLevel: clampInt(progress.prestigeLevel, 0, 99, 0),
+        completions: clampInt(progress.completions, 0, 999, 0)
+      };
+      return acc;
+    }, {}),
+    prepWorkers: state.prepWorkers.map((worker) => ({ ...worker })),
+    runnerWorkers: state.runnerWorkers.map((worker) => ({ ...worker })),
+    cleanerWorkers: state.cleanerWorkers.map((worker) => ({ ...worker })),
+    prepWorker: state.prepWorkers[0] || null,
+    runnerWorker: state.runnerWorkers[0] || null,
+    cleanerWorker: state.cleanerWorkers[0] || null,
     ovens: state.ovens.map((oven) => ({
       id: oven.id,
       zoneId: oven.zoneId,
@@ -2344,8 +2795,106 @@ function loadGame() {
   }
 }
 
+function sanitizePrepWorkerData(raw, maxUnlockedZone) {
+  if (!raw || typeof raw !== "object") {
+    return null;
+  }
+
+  const zoneId = clampInt(raw.zoneId, 1, maxUnlockedZone, 1);
+  const zone = zoneById(zoneId);
+  return {
+    zoneId,
+    x: clampNum(raw.x, zone.xMin + 24, zone.xMax - 24, zone.xMin + 120),
+    y: clampNum(raw.y, 24, WORLD.height - 24, 330),
+    state: ["toDough", "toSauce", "toCheese", "toOven", "waitOven"].includes(raw.state) ? raw.state : "toDough",
+    carry: ["dough", "sauce", "cheese", "baked", null].includes(raw.carry) ? raw.carry : null,
+    targetOvenId: typeof raw.targetOvenId === "string" ? raw.targetOvenId : null
+  };
+}
+
+function sanitizeRunnerWorkerData(raw, maxUnlockedZone) {
+  if (!raw || typeof raw !== "object") {
+    return null;
+  }
+
+  const zoneId = clampInt(raw.zoneId, 1, maxUnlockedZone, 1);
+  const zone = zoneById(zoneId);
+  return {
+    zoneId,
+    x: clampNum(raw.x, zone.xMin + 24, zone.xMax - 24, zone.xMin + 660),
+    y: clampNum(raw.y, 24, WORLD.height - 24, 330),
+    carry: ["baked", null].includes(raw.carry) ? raw.carry : null,
+    targetOvenId: typeof raw.targetOvenId === "string" ? raw.targetOvenId : null
+  };
+}
+
+function sanitizeCleanerWorkerData(raw, maxUnlockedZone) {
+  if (!raw || typeof raw !== "object") {
+    return null;
+  }
+
+  const zoneId = clampInt(raw.zoneId, 1, maxUnlockedZone, 1);
+  const zone = zoneById(zoneId);
+  return {
+    zoneId,
+    x: clampNum(raw.x, zone.xMin + 24, zone.xMax - 24, zone.xMin + 560),
+    y: clampNum(raw.y, 24, WORLD.height - 24, 468),
+    state: ["idle", "cleaning"].includes(raw.state) ? raw.state : "idle"
+  };
+}
+
+function readWorkersFromSave(rawList, legacyWorker, sanitizeWorker) {
+  const workers = [];
+  const seenZones = new Set();
+
+  if (Array.isArray(rawList)) {
+    for (const rawWorker of rawList) {
+      const worker = sanitizeWorker(rawWorker);
+      if (!worker || seenZones.has(worker.zoneId)) {
+        continue;
+      }
+      seenZones.add(worker.zoneId);
+      workers.push(worker);
+    }
+  }
+
+  if (!workers.length) {
+    const fallback = sanitizeWorker({ ...(legacyWorker || {}), zoneId: 1 });
+    if (fallback) {
+      workers.push(fallback);
+    }
+  }
+
+  return workers;
+}
+
+function sanitizeStoreProgressData(raw, fallback = null) {
+  const base = fallback && typeof fallback === "object" ? fallback : createStoreProgressEntry();
+  if (!raw || typeof raw !== "object") {
+    return {
+      nextUpgrade: clampInt(base.nextUpgrade, 0, STORE_UPGRADE_STEPS.length, 0),
+      autoPrep: Boolean(base.autoPrep),
+      autoRunner: Boolean(base.autoRunner),
+      autoCleaner: Boolean(base.autoCleaner),
+      secondOven: Boolean(base.secondOven),
+      prestigeLevel: clampInt(base.prestigeLevel, 0, 99, 0),
+      completions: clampInt(base.completions, 0, 999, 0)
+    };
+  }
+
+  return {
+    nextUpgrade: clampInt(raw.nextUpgrade, 0, STORE_UPGRADE_STEPS.length, base.nextUpgrade),
+    autoPrep: typeof raw.autoPrep === "boolean" ? raw.autoPrep : Boolean(base.autoPrep),
+    autoRunner: typeof raw.autoRunner === "boolean" ? raw.autoRunner : Boolean(base.autoRunner),
+    autoCleaner: typeof raw.autoCleaner === "boolean" ? raw.autoCleaner : Boolean(base.autoCleaner),
+    secondOven: typeof raw.secondOven === "boolean" ? raw.secondOven : Boolean(base.secondOven),
+    prestigeLevel: clampInt(raw.prestigeLevel, 0, 99, clampInt(base.prestigeLevel, 0, 99, 0)),
+    completions: clampInt(raw.completions, 0, 999, clampInt(base.completions, 0, 999, 0))
+  };
+}
+
 function applySave(data) {
-  if (!data || (data.version !== 3 && data.version !== 4 && data.version !== 5)) {
+  if (!data || (data.version !== 3 && data.version !== 4 && data.version !== 5 && data.version !== 6 && data.version !== 7 && data.version !== 8)) {
     return false;
   }
 
@@ -2375,12 +2924,17 @@ function applySave(data) {
   state.orderSpawnBase = clampNum(data.orderSpawnBase, 3.2, 12, currentCampaign().spawnBase);
   state.patienceBoost = clampNum(data.patienceBoost, -12, 16, currentCampaign().patienceBoost);
   state.payoutMultiplier = clampNum(data.payoutMultiplier, 0.7, 2.2, currentCampaign().payoutMultiplier);
-  state.nextUpgrade = clampInt(data.nextUpgrade, 0, state.upgrades.length, 0);
+  const legacyNextUpgrade = clampInt(data.nextUpgrade, 0, STORE_UPGRADE_STEPS.length, 0);
+  const legacyAutoPrep = Boolean(data.autoPrepUnlocked);
+  const legacyAutoRunner = Boolean(data.autoRunnerUnlocked);
+  const legacyAutoCleaner = Boolean(data.autoCleanerUnlocked);
+  const legacySecondOven = Boolean(data.secondOvenUnlocked);
+  state.nextUpgrade = legacyNextUpgrade;
   state.passiveIncome = clampNum(data.passiveIncome, 0, 140, 0);
-  state.secondOvenUnlocked = Boolean(data.secondOvenUnlocked);
-  state.autoPrepUnlocked = Boolean(data.autoPrepUnlocked);
-  state.autoRunnerUnlocked = Boolean(data.autoRunnerUnlocked);
-  state.autoCleanerUnlocked = Boolean(data.autoCleanerUnlocked);
+  state.secondOvenUnlocked = legacySecondOven;
+  state.autoPrepUnlocked = legacyAutoPrep;
+  state.autoRunnerUnlocked = legacyAutoRunner;
+  state.autoCleanerUnlocked = legacyAutoCleaner;
   state.muted = Boolean(data.muted);
   state.dashAuto = Boolean(data.dashAuto);
   state.sprintBurstTimer = 0;
@@ -2388,6 +2942,36 @@ function applySave(data) {
   state.lastTapX = 0;
   state.lastTapY = 0;
 
+  state.storeProgress = createDefaultStoreProgress();
+  if (data.storeProgress && typeof data.storeProgress === "object") {
+    for (const zone of ZONES) {
+      const key = String(zone.id);
+      state.storeProgress[key] = sanitizeStoreProgressData(data.storeProgress[key], state.storeProgress[key]);
+    }
+  } else {
+    const z1 = sanitizeStoreProgressData(
+      {
+        nextUpgrade: clampInt(legacyNextUpgrade, 0, STORE_UPGRADE_STEPS.length, 0),
+        autoPrep: legacyAutoPrep,
+        autoRunner: legacyAutoRunner,
+        autoCleaner: legacyAutoCleaner,
+        secondOven: legacySecondOven
+      },
+      state.storeProgress[1]
+    );
+    const baseline = Number(z1.autoPrep) + Number(z1.autoRunner) + Number(z1.autoCleaner) + Number(z1.secondOven);
+    z1.nextUpgrade = Math.max(z1.nextUpgrade, baseline);
+    state.storeProgress[1] = z1;
+  }
+
+  for (const zone of ZONES) {
+    const progress = getStoreProgress(zone.id);
+    if (progress.nextUpgrade >= STORE_UPGRADE_STEPS.length) {
+      progress.completions = Math.max(1, clampInt(progress.completions, 0, 999, 0));
+    }
+  }
+
+  syncBusinessExpansionByStoreProgress(false);
   const unlockedZones = getUnlockedZones();
   const maxUnlockedZone = unlockedZones.length ? unlockedZones[unlockedZones.length - 1].id : 1;
 
@@ -2420,17 +3004,28 @@ function applySave(data) {
     state.ovens = buildBaseOvens();
   }
 
-  if (state.secondOvenUnlocked && !state.ovens.some((oven) => oven.id === "z1-second")) {
-    state.ovens.push(createOven("z1-second", 1, 588, 226, 3.9, 1));
+  for (const zone of ZONES) {
+    if (getStoreProgress(zone.id).secondOven) {
+      ensureZoneSecondOven(zone.id, 3.9 - (zone.id - 1) * 0.1);
+    }
   }
 
   for (const oven of state.ovens) {
-    if (oven.id === "z1-main") {
-      oven.x = 512;
+    const zone = zoneById(oven.zoneId);
+    if (oven.id === `z${zone.id}-main`) {
+      oven.x = zone.xMin + 512;
       oven.y = 226;
-    } else if (oven.id === "z1-second") {
-      oven.x = 588;
+      oven.minBusinesses = zone.minBusinesses;
+    } else if (oven.id === getZoneSecondOvenId(zone.id)) {
+      oven.x = zone.xMin + 588;
       oven.y = 226;
+      oven.minBusinesses = zone.minBusinesses;
+    }
+  }
+
+  for (const zone of ZONES) {
+    if (state.ovens.some((oven) => oven.id === getZoneSecondOvenId(zone.id))) {
+      getStoreProgress(zone.id).secondOven = true;
     }
   }
 
@@ -2460,32 +3055,22 @@ function applySave(data) {
     }));
   }
 
-  if (data.prepWorker && typeof data.prepWorker === "object") {
-    state.prepWorker = {
-      x: clampNum(data.prepWorker.x, 24, getMaxReachX() - 24, 120),
-      y: clampNum(data.prepWorker.y, 24, WORLD.height - 24, 330),
-      state: typeof data.prepWorker.state === "string" ? data.prepWorker.state : "toDough",
-      carry: ["dough", "sauce", "cheese", "baked", null].includes(data.prepWorker.carry) ? data.prepWorker.carry : null,
-      targetOvenId: typeof data.prepWorker.targetOvenId === "string" ? data.prepWorker.targetOvenId : null
-    };
-  }
-
-  if (data.runnerWorker && typeof data.runnerWorker === "object") {
-    state.runnerWorker = {
-      x: clampNum(data.runnerWorker.x, 24, getMaxReachX() - 24, 660),
-      y: clampNum(data.runnerWorker.y, 24, WORLD.height - 24, 330),
-      carry: ["baked", null].includes(data.runnerWorker.carry) ? data.runnerWorker.carry : null,
-      targetOvenId: typeof data.runnerWorker.targetOvenId === "string" ? data.runnerWorker.targetOvenId : null
-    };
-  }
-
-  if (data.cleanerWorker && typeof data.cleanerWorker === "object") {
-    state.cleanerWorker = {
-      x: clampNum(data.cleanerWorker.x, 24, getMaxReachX() - 24, 560),
-      y: clampNum(data.cleanerWorker.y, 24, WORLD.height - 24, 468),
-      state: typeof data.cleanerWorker.state === "string" ? data.cleanerWorker.state : "idle"
-    };
-  }
+  state.prepWorkers = readWorkersFromSave(
+    data.prepWorkers,
+    data.prepWorker && typeof data.prepWorker === "object" ? data.prepWorker : null,
+    (worker) => sanitizePrepWorkerData(worker, maxUnlockedZone)
+  );
+  state.runnerWorkers = readWorkersFromSave(
+    data.runnerWorkers,
+    data.runnerWorker && typeof data.runnerWorker === "object" ? data.runnerWorker : null,
+    (worker) => sanitizeRunnerWorkerData(worker, maxUnlockedZone)
+  );
+  state.cleanerWorkers = readWorkersFromSave(
+    data.cleanerWorkers,
+    data.cleanerWorker && typeof data.cleanerWorker === "object" ? data.cleanerWorker : null,
+    (worker) => sanitizeCleanerWorkerData(worker, maxUnlockedZone)
+  );
+  syncWorkersForUnlockedStorefronts();
 
   for (const customer of state.customers) {
     if (customer.state === "waiting" || customer.state === "eating") {
