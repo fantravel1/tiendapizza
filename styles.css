@@ -213,8 +213,12 @@ body {
 
 .control-row {
   display: grid;
-  grid-template-columns: 1fr;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 0.45rem;
+}
+
+.control-row-single {
+  grid-template-columns: 1fr;
 }
 
 .sound {
@@ -226,6 +230,32 @@ body {
   color: #fffaf0;
   background: linear-gradient(180deg, #7f357d 0%, #5a2158 100%);
   touch-action: manipulation;
+}
+
+.haptic {
+  border: none;
+  border-radius: 12px;
+  min-height: 52px;
+  font-size: 0.95rem;
+  font-weight: 800;
+  color: #fffaf0;
+  background: linear-gradient(180deg, #2e7092 0%, #1e4f69 100%);
+  touch-action: manipulation;
+}
+
+.sprint {
+  border: none;
+  border-radius: 12px;
+  min-height: 52px;
+  font-size: 1rem;
+  font-weight: 800;
+  color: #fffaf0;
+  background: linear-gradient(180deg, #b65b1f 0%, #7d3a12 100%);
+  touch-action: none;
+}
+
+.sprint[aria-pressed="true"] {
+  background: linear-gradient(180deg, #de7b30 0%, #9b4b16 100%);
 }
 
 .toast {

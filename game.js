@@ -70,7 +70,8 @@ const ui = {
   shops: document.getElementById("shopsLabel"),
   toast: document.getElementById("toast"),
   soundBtn: document.getElementById("soundBtn"),
-  dashBtn: document.getElementById("dashBtn"),
+  hapticBtn: document.getElementById("hapticBtn"),
+  sprintBtn: document.getElementById("sprintBtn"),
   startBtn: document.getElementById("startBtn"),
   continueBtn: document.getElementById("continueBtn"),
   cityDesc: document.getElementById("cityDesc"),
@@ -127,6 +128,8 @@ const state = {
   pendingStoreUnlock: null,
   unlockConfirmZone: null,
   unlockConfirmTimer: 0,
+  spendConfirmToken: null,
+  spendConfirmTimer: 0,
   prepWorkers: [],
   runnerWorkers: [],
   cleanerWorkers: [],
@@ -137,9 +140,11 @@ const state = {
   autosaveTimer: 0,
   saveDirty: false,
   muted: false,
+  hapticsEnabled: true,
   moveTarget: null,
   pendingInteract: null,
   sprintBurstTimer: 0,
+  sprintHeld: false,
   lastTapMs: 0,
   lastTapX: 0,
   lastTapY: 0,
@@ -163,6 +168,7 @@ const OVEN_HEIGHT = 54;
 const OVEN_HIT_RADIUS = 42;
 const DOUBLE_TAP_MS = 290;
 const DOUBLE_TAP_DISTANCE = 56;
+const TAP_DRAG_THRESHOLD = 14;
 const STORE_UPGRADE_STEPS = [
   { key: "turbo", name: "Turbo Horno", baseCost: 62 },
   { key: "prep", name: "Ayudante", baseCost: 88 },
@@ -406,6 +412,9 @@ function markDirty() {
 }
 
 function buzz(ms = 14) {
+  if (!state.hapticsEnabled) {
+    return;
+  }
   if (navigator.vibrate) {
     navigator.vibrate(ms);
   }
@@ -1140,7 +1149,7 @@ function setCampaignChoice(cityKey) {
 
 function resizeCanvas() {
   const rect = canvas.getBoundingClientRect();
-  const ratio = window.devicePixelRatio || 1;
+  const ratio = Math.min(window.devicePixelRatio || 1, 2);
   canvas.width = Math.floor(rect.width * ratio);
   canvas.height = Math.floor(rect.height * ratio);
   ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
@@ -1148,15 +1157,23 @@ function resizeCanvas() {
   WORLD.viewH = rect.height;
 }
 
-function updateDashLabel() {
-  if (!ui.dashBtn) {
-    return;
-  }
-  ui.dashBtn.textContent = `Sprint Auto: ${state.dashAuto ? "Encendido" : "Apagado"}`;
-}
-
 function updateSoundLabel() {
   ui.soundBtn.textContent = state.muted ? "Sonido Apagado" : "Sonido Activo";
+}
+
+function updateHapticLabel() {
+  if (!ui.hapticBtn) {
+    return;
+  }
+  ui.hapticBtn.textContent = state.hapticsEnabled ? "Vibracion Activa" : "Vibracion Apagada";
+}
+
+function updateSprintLabel() {
+  if (!ui.sprintBtn) {
+    return;
+  }
+  ui.sprintBtn.textContent = state.sprintHeld ? "Sprint Activo" : "Mantener Sprint";
+  ui.sprintBtn.setAttribute("aria-pressed", state.sprintHeld ? "true" : "false");
 }
 
 function updateHud() {
@@ -1226,6 +1243,8 @@ function resetProgress(cityKey = "usa") {
   state.pendingStoreUnlock = null;
   state.unlockConfirmZone = null;
   state.unlockConfirmTimer = 0;
+  state.spendConfirmToken = null;
+  state.spendConfirmTimer = 0;
   state.prepWorkers = [];
   state.runnerWorkers = [];
   state.cleanerWorkers = [];
@@ -1238,9 +1257,12 @@ function resetProgress(cityKey = "usa") {
   state.moveTarget = null;
   state.pendingInteract = null;
   state.sprintBurstTimer = 0;
+  state.sprintHeld = false;
   state.lastTapMs = 0;
   state.lastTapX = 0;
   state.lastTapY = 0;
+  state.spendConfirmToken = null;
+  state.spendConfirmTimer = 0;
   state.tapPulse = 0;
   state.tapX = 0;
   state.tapY = 0;
@@ -1255,7 +1277,7 @@ function resetProgress(cityKey = "usa") {
   ui.startOverlay.style.display = "grid";
   setCampaignChoice(cityKey);
   syncLegacyWorkerFlagsFromStoreProgress();
-  updateDashLabel();
+  updateSprintLabel();
   updateHud();
 }
 
@@ -1263,6 +1285,24 @@ function showToast(text, seconds = 1.7) {
   ui.toast.textContent = text;
   ui.toast.classList.add("show");
   state.messageTimer = seconds;
+}
+
+function clearSpendConfirm() {
+  state.spendConfirmToken = null;
+  state.spendConfirmTimer = 0;
+}
+
+function requireSpendConfirm(token, message, seconds = 3.1) {
+  if (state.spendConfirmToken === token && state.spendConfirmTimer > 0) {
+    clearSpendConfirm();
+    return true;
+  }
+
+  state.spendConfirmToken = token;
+  state.spendConfirmTimer = seconds;
+  showToast(message, Math.min(seconds, 2.5));
+  sound.play("ui");
+  return false;
 }
 
 function startMoneyTween(target, duration = 0.58, delay = 0) {
@@ -1790,9 +1830,15 @@ function sendCustomerToEat(orderId) {
 function runAdCampaign() {
   const adCost = 25 + state.adBoost * 12;
   if (state.money < adCost) {
+    clearSpendConfirm();
     showToast("No hay suficiente dinero para anuncios.");
     sound.play("fail");
     buzz(10);
+    return false;
+  }
+
+  const adToken = `ads|${state.adBoost}|${adCost}`;
+  if (!requireSpendConfirm(adToken, `Confirmar anuncios por $${adCost}. Toca ANUN otra vez.`)) {
     return false;
   }
 
@@ -1817,6 +1863,7 @@ function buyUpgrade(zoneId = 1) {
 
   const pendingUnlock = syncPendingStoreUnlockFromProgress();
   if (pendingUnlock) {
+    clearSpendConfirm();
     handlePendingStoreUnlockTap();
     return;
   }
@@ -1829,6 +1876,7 @@ function buyUpgrade(zoneId = 1) {
   }
 
   if (state.money < upgrade.cost) {
+    clearSpendConfirm();
     showToast(`Zona ${zone.id}: ${upgrade.name} requiere $${upgrade.cost}.`);
     sound.play("fail");
     return;
@@ -1836,6 +1884,16 @@ function buyUpgrade(zoneId = 1) {
 
   const progress = getStoreProgress(zone.id);
   const beforeLevel = clampInt(progress.nextUpgrade, 0, STORE_UPGRADE_STEPS.length, 0);
+  const upgradeToken = `store-upgrade|${zone.id}|${beforeLevel}|${upgrade.isPrestige ? 1 : 0}|${upgrade.cost}`;
+  if (
+    !requireSpendConfirm(
+      upgradeToken,
+      `Confirmar ${upgrade.name} Z${zone.id} por $${upgrade.cost}. Toca CRECE otra vez.`
+    )
+  ) {
+    return;
+  }
+
   state.money -= upgrade.cost;
   upgrade.apply();
   if (!upgrade.isPrestige) {
@@ -1915,7 +1973,7 @@ function serveOrderAtCounter(zoneId) {
   player.carry = null;
   sendCustomerToEat(order.id);
 
-  showToast("succes!");
+  showToast("Pedido entregado. Excelente!");
   sound.play("success");
   buzz(14);
   markDirty();
@@ -2495,7 +2553,8 @@ function movePlayerToward(dx, dy, dt) {
     speed *= 0.83;
   }
 
-  if (state.sprintBurstTimer > 0 && player.stamina > 0) {
+  const sprintActive = (state.sprintBurstTimer > 0 || state.sprintHeld) && player.stamina > 0;
+  if (sprintActive) {
     speed *= 1.55;
     player.stamina = clamp(player.stamina - dt * 0.6, 0, 1);
   } else {
@@ -3069,11 +3128,21 @@ function drawNearbyHint() {
     text = "Toca: OBJETO EN PISO";
   }
 
-  ctx.fillStyle = "rgba(36, 20, 9, 0.88)";
-  ctx.fillRect(WORLD.viewW / 2 - 90, WORLD.viewH - 28, 180, 20);
-  ctx.fillStyle = "#fff0d8";
   ctx.font = "11px monospace";
-  ctx.fillText(text, WORLD.viewW / 2 - 82, WORLD.viewH - 14);
+  const maxWidth = Math.max(160, WORLD.viewW - 20);
+  let clipped = text;
+  while (ctx.measureText(clipped).width > maxWidth - 16 && clipped.length > 16) {
+    clipped = `${clipped.slice(0, -4)}...`;
+  }
+
+  const panelW = Math.min(maxWidth, Math.max(150, Math.ceil(ctx.measureText(clipped).width + 16)));
+  const panelX = Math.round((WORLD.viewW - panelW) / 2);
+  const panelY = WORLD.viewH - 28;
+
+  ctx.fillStyle = "rgba(36, 20, 9, 0.88)";
+  ctx.fillRect(panelX, panelY, panelW, 20);
+  ctx.fillStyle = "#fff0d8";
+  ctx.fillText(clipped, panelX + 8, panelY + 14);
 }
 
 function drawChaosTint() {
@@ -3505,6 +3574,7 @@ function saveSnapshot() {
     unlockConfirmZone: state.unlockConfirmZone,
     unlockConfirmTimer: state.unlockConfirmTimer,
     muted: state.muted,
+    hapticsEnabled: state.hapticsEnabled,
     dashAuto: state.dashAuto
   };
 }
@@ -3714,8 +3784,10 @@ function applySave(data) {
   state.autoRunnerUnlocked = legacyAutoRunner;
   state.autoCleanerUnlocked = legacyAutoCleaner;
   state.muted = Boolean(data.muted);
+  state.hapticsEnabled = typeof data.hapticsEnabled === "boolean" ? data.hapticsEnabled : true;
   state.dashAuto = Boolean(data.dashAuto);
   state.sprintBurstTimer = 0;
+  state.sprintHeld = false;
   state.lastTapMs = 0;
   state.lastTapX = 0;
   state.lastTapY = 0;
@@ -3896,7 +3968,8 @@ function applySave(data) {
 
   syncCustomersWithOrders();
   updateSoundLabel();
-  updateDashLabel();
+  updateHapticLabel();
+  updateSprintLabel();
   setCampaignChoice(campaignKey);
   updateHud();
 
@@ -3954,8 +4027,19 @@ function handleCityTap(event) {
   if (!unit) {
     const cost = getCityBuildCost();
     if (state.money < cost) {
+      clearSpendConfirm();
       showToast(`Necesitas $${cost} para construir una unidad.`);
       sound.play("fail");
+      return;
+    }
+
+    const buildToken = `city-build|${lotId}|${state.cityBuildCount}|${cost}`;
+    if (
+      !requireSpendConfirm(
+        buildToken,
+        `Confirmar nuevo restaurante por $${cost}. Toca el lote otra vez.`
+      )
+    ) {
       return;
     }
 
@@ -3973,8 +4057,19 @@ function handleCityTap(event) {
 
   const upgradeCost = getCityUpgradeCost(unit);
   if (state.money < upgradeCost) {
+    clearSpendConfirm();
     showToast(`Mejora requiere $${upgradeCost}.`);
     sound.play("fail");
+    return;
+  }
+
+  const upgradeToken = `city-upgrade|${lotId}|${unit.level}|${upgradeCost}`;
+  if (
+    !requireSpendConfirm(
+      upgradeToken,
+      `Confirmar mejora a nivel ${unit.level + 1} por $${upgradeCost}. Toca otra vez.`
+    )
+  ) {
     return;
   }
 
@@ -4049,7 +4144,45 @@ function handleMapTap(event) {
 }
 
 function setupCanvasControls() {
-  canvas.addEventListener("pointerdown", handleMapTap, { passive: false });
+  let activePointerId = null;
+  let downX = 0;
+  let downY = 0;
+
+  canvas.addEventListener(
+    "pointerdown",
+    (event) => {
+      activePointerId = event.pointerId;
+      downX = event.clientX;
+      downY = event.clientY;
+    },
+    { passive: true }
+  );
+
+  canvas.addEventListener(
+    "pointerup",
+    (event) => {
+      if (activePointerId !== event.pointerId) {
+        return;
+      }
+      activePointerId = null;
+      const delta = Math.hypot(event.clientX - downX, event.clientY - downY);
+      if (delta > TAP_DRAG_THRESHOLD) {
+        return;
+      }
+      handleMapTap(event);
+    },
+    { passive: false }
+  );
+
+  canvas.addEventListener(
+    "pointercancel",
+    (event) => {
+      if (activePointerId === event.pointerId) {
+        activePointerId = null;
+      }
+    },
+    { passive: true }
+  );
 }
 
 function setupKeyboard() {
@@ -4133,13 +4266,35 @@ function setupMainButtons() {
     markDirty();
   });
 
-  if (ui.dashBtn) {
-    ui.dashBtn.addEventListener("click", () => {
-      state.dashAuto = !state.dashAuto;
-      updateDashLabel();
+  bindTap(ui.hapticBtn, () => {
+    state.hapticsEnabled = !state.hapticsEnabled;
+    updateHapticLabel();
+    sound.play("ui");
+    markDirty();
+  });
+
+  if (ui.sprintBtn) {
+    const stopSprint = () => {
+      if (!state.sprintHeld) {
+        return;
+      }
+      state.sprintHeld = false;
+      updateSprintLabel();
+    };
+
+    ui.sprintBtn.addEventListener("pointerdown", (event) => {
+      event.preventDefault();
+      if (!state.running || state.gameMode === "city") {
+        return;
+      }
+      state.sprintHeld = true;
+      updateSprintLabel();
       sound.play("ui");
-      markDirty();
     });
+
+    ui.sprintBtn.addEventListener("pointerup", stopSprint);
+    ui.sprintBtn.addEventListener("pointercancel", stopSprint);
+    ui.sprintBtn.addEventListener("pointerleave", stopSprint);
   }
 }
 
@@ -4215,6 +4370,13 @@ function tick(ts) {
       }
     }
 
+    if (state.spendConfirmTimer > 0) {
+      state.spendConfirmTimer = Math.max(0, state.spendConfirmTimer - dt);
+      if (state.spendConfirmTimer <= 0) {
+        clearSpendConfirm();
+      }
+    }
+
     if (state.passiveIncome > 0) {
       state.passiveTimer += dt;
       if (state.passiveTimer >= 4) {
@@ -4265,7 +4427,8 @@ function bootstrap() {
   ui.continueBtn.hidden = !save;
 
   updateSoundLabel();
-  updateDashLabel();
+  updateHapticLabel();
+  updateSprintLabel();
   updateHud();
 
   window.addEventListener("resize", resizeCanvas);
