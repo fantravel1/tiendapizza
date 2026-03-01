@@ -79,7 +79,11 @@ const ui = {
   continueBtn: document.getElementById("continueBtn"),
   cityDesc: document.getElementById("cityDesc"),
   cityOptions: [...document.querySelectorAll(".city-option")],
-  startOverlay: document.getElementById("startOverlay")
+  startOverlay: document.getElementById("startOverlay"),
+  bootSplash: document.getElementById("bootSplash"),
+  bootProgressFill: document.getElementById("bootProgressFill"),
+  bootPercent: document.getElementById("bootPercent"),
+  bootStartBtn: document.getElementById("bootStartBtn")
 };
 
 const state = {
@@ -179,6 +183,8 @@ const LOW_END_CPU_CORES = 4;
 const LOW_END_MEMORY_GB = 4;
 const LOW_END_DPR_CAP = 1.35;
 const CITY_LOW_FPS = 30;
+const BOOT_FAKE_MIN_MS = 2200;
+const BOOT_FAKE_MAX_MS = 3000;
 const STORE_UPGRADE_STEPS = [
   { key: "turbo", name: "Turbo Horno", baseCost: 62 },
   { key: "prep", name: "Ayudante", baseCost: 88 },
@@ -252,6 +258,62 @@ function detectLowPerformanceMode() {
   const coarsePointer = typeof window.matchMedia === "function" && window.matchMedia("(pointer: coarse)").matches;
 
   return coarsePointer && (cores <= LOW_END_CPU_CORES || memory <= LOW_END_MEMORY_GB);
+}
+
+function setBootProgress(percent) {
+  const value = clampInt(percent, 0, 100, 0);
+  if (ui.bootProgressFill) {
+    ui.bootProgressFill.style.width = `${value}%`;
+  }
+  if (ui.bootPercent) {
+    ui.bootPercent.textContent = `${value}%`;
+  }
+}
+
+function setupBootSplash() {
+  if (!ui.bootSplash || !ui.bootStartBtn) {
+    return Promise.resolve();
+  }
+
+  ui.bootSplash.hidden = false;
+  ui.bootSplash.classList.remove("hide");
+  ui.bootStartBtn.hidden = true;
+  ui.bootStartBtn.disabled = true;
+  setBootProgress(0);
+
+  return new Promise((resolve) => {
+    const targetMs = BOOT_FAKE_MIN_MS + Math.random() * (BOOT_FAKE_MAX_MS - BOOT_FAKE_MIN_MS);
+    const loadStart = performance.now();
+
+    const revealStart = () => {
+      ui.bootStartBtn.hidden = false;
+      ui.bootStartBtn.disabled = false;
+      const launch = (event) => {
+        event.preventDefault();
+        ui.bootSplash.classList.add("hide");
+        window.setTimeout(() => {
+          ui.bootSplash.hidden = true;
+          resolve();
+        }, 290);
+      };
+      ui.bootStartBtn.addEventListener("click", launch, { once: true });
+    };
+
+    const tickLoad = () => {
+      const elapsed = performance.now() - loadStart;
+      const t = clamp(elapsed / targetMs, 0, 1);
+      const eased = 1 - Math.pow(1 - t, 2.4);
+      setBootProgress(Math.round(4 + eased * 96));
+      if (t < 1) {
+        requestAnimationFrame(tickLoad);
+        return;
+      }
+      setBootProgress(100);
+      revealStart();
+    };
+
+    requestAnimationFrame(tickLoad);
+  });
 }
 
 function loadSprites() {
@@ -4631,7 +4693,7 @@ function tick(ts) {
   requestAnimationFrame(tick);
 }
 
-function bootstrap() {
+async function bootstrap() {
   state.lowPerfMode = detectLowPerformanceMode();
   loadSprites();
   resizeCanvas();
@@ -4652,6 +4714,8 @@ function bootstrap() {
   updateHud();
 
   window.addEventListener("resize", resizeCanvas);
+
+  await setupBootSplash();
 
   last = performance.now();
   requestAnimationFrame(tick);

@@ -12,13 +12,45 @@
 </head>
 <body>
   <main class="app">
+    <div id="bootSplash" class="boot-splash" role="dialog" aria-label="Pantalla de inicio">
+      <div class="boot-card">
+        <div class="boot-logo-wrap">
+          <img class="boot-slice" src="assets/pizza-baked.svg" alt="" aria-hidden="true">
+          <h1 class="boot-title">TiendaPizza</h1>
+        </div>
+        <p class="boot-subtitle">Preparando masa, horno y ciudad...</p>
+        <div class="boot-progress" aria-label="Cargando">
+          <div id="bootProgressFill" class="boot-progress-fill"></div>
+        </div>
+        <p id="bootPercent" class="boot-percent">0%</p>
+        <button id="bootStartBtn" class="boot-start" type="button" hidden disabled>START GAME</button>
+      </div>
+    </div>
+
     <header class="hud" aria-label="Indicadores del juego">
-      <div class="hud-item"><span>Ciudad</span><strong id="cityLabel">Brooklyn, EE. UU.</strong></div>
-      <div class="hud-item"><span>Dinero</span><strong id="moneyLabel">$40</strong></div>
-      <div class="hud-item"><span>Dia</span><strong id="dayLabel">1</strong></div>
-      <div class="hud-item"><span>Estrellas</span><strong id="repLabel">5.0</strong></div>
-      <div class="hud-item"><span>Pedidos</span><strong id="queueLabel">0</strong></div>
-      <div class="hud-item"><span>Sucursales</span><strong id="shopsLabel">1</strong></div>
+      <div class="hud-priority" role="group" aria-label="Indicadores principales">
+        <div class="hud-chip">
+          <span>Dinero</span>
+          <strong id="moneyLabel">$40</strong>
+        </div>
+        <div class="hud-chip">
+          <span>Pedidos</span>
+          <strong id="queueLabel">0/2</strong>
+        </div>
+        <div class="hud-chip">
+          <span>Estrellas</span>
+          <strong id="repLabel">5.0</strong>
+        </div>
+      </div>
+      <div class="hud-goal-row">
+        <p id="objectiveLabel" class="objective-chip">Objetivo: Prepara la primera pizza.</p>
+        <button id="hudDetailsBtn" class="hud-details-btn" type="button" aria-expanded="false">Detalles</button>
+      </div>
+      <div id="hudDetails" class="hud-details" hidden>
+        <div class="hud-mini"><span>Ciudad</span><strong id="cityLabel">Brooklyn, EE. UU.</strong></div>
+        <div class="hud-mini"><span>Dia</span><strong id="dayLabel">1</strong></div>
+        <div class="hud-mini"><span>Sucursales</span><strong id="shopsLabel">1</strong></div>
+      </div>
     </header>
 
     <section class="stage">
