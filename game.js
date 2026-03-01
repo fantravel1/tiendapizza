@@ -68,6 +68,9 @@ const ui = {
   rep: document.getElementById("repLabel"),
   queue: document.getElementById("queueLabel"),
   shops: document.getElementById("shopsLabel"),
+  objective: document.getElementById("objectiveLabel"),
+  hudDetails: document.getElementById("hudDetails"),
+  hudDetailsBtn: document.getElementById("hudDetailsBtn"),
   toast: document.getElementById("toast"),
   soundBtn: document.getElementById("soundBtn"),
   hapticBtn: document.getElementById("hapticBtn"),
@@ -141,6 +144,9 @@ const state = {
   saveDirty: false,
   muted: false,
   hapticsEnabled: true,
+  hudDetailsOpen: false,
+  lowPerfMode: false,
+  cityRenderTimer: 0,
   moveTarget: null,
   pendingInteract: null,
   sprintBurstTimer: 0,
@@ -169,6 +175,10 @@ const OVEN_HIT_RADIUS = 42;
 const DOUBLE_TAP_MS = 290;
 const DOUBLE_TAP_DISTANCE = 56;
 const TAP_DRAG_THRESHOLD = 14;
+const LOW_END_CPU_CORES = 4;
+const LOW_END_MEMORY_GB = 4;
+const LOW_END_DPR_CAP = 1.35;
+const CITY_LOW_FPS = 30;
 const STORE_UPGRADE_STEPS = [
   { key: "turbo", name: "Turbo Horno", baseCost: 62 },
   { key: "prep", name: "Ayudante", baseCost: 88 },
@@ -220,6 +230,29 @@ const SPRITE_SOURCES = {
 const sprites = {};
 let selectedCampaign = "usa";
 let last = 0;
+const hudTextCache = {
+  city: "",
+  money: "",
+  day: "",
+  rep: "",
+  queue: "",
+  shops: "",
+  objective: "",
+  detailsBtn: "",
+  detailsOpen: null
+};
+
+function detectLowPerformanceMode() {
+  if (typeof window === "undefined" || typeof navigator === "undefined") {
+    return false;
+  }
+
+  const cores = typeof navigator.hardwareConcurrency === "number" ? navigator.hardwareConcurrency : 6;
+  const memory = typeof navigator.deviceMemory === "number" ? navigator.deviceMemory : 8;
+  const coarsePointer = typeof window.matchMedia === "function" && window.matchMedia("(pointer: coarse)").matches;
+
+  return coarsePointer && (cores <= LOW_END_CPU_CORES || memory <= LOW_END_MEMORY_GB);
+}
 
 function loadSprites() {
   for (const [key, src] of Object.entries(SPRITE_SOURCES)) {
@@ -1149,7 +1182,8 @@ function setCampaignChoice(cityKey) {
 
 function resizeCanvas() {
   const rect = canvas.getBoundingClientRect();
-  const ratio = Math.min(window.devicePixelRatio || 1, 2);
+  const ratioCap = state.lowPerfMode ? LOW_END_DPR_CAP : 2;
+  const ratio = Math.min(window.devicePixelRatio || 1, ratioCap);
   canvas.width = Math.floor(rect.width * ratio);
   canvas.height = Math.floor(rect.height * ratio);
   ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
@@ -1176,20 +1210,154 @@ function updateSprintLabel() {
   ui.sprintBtn.setAttribute("aria-pressed", state.sprintHeld ? "true" : "false");
 }
 
+function setNodeText(node, key, text) {
+  if (!node) {
+    return;
+  }
+  if (hudTextCache[key] === text) {
+    return;
+  }
+  node.textContent = text;
+  hudTextCache[key] = text;
+}
+
+function setHudDetailsOpen(open) {
+  const next = Boolean(open);
+  state.hudDetailsOpen = next;
+
+  if (ui.hudDetails && ui.hudDetails.hidden !== !next) {
+    ui.hudDetails.hidden = !next;
+  }
+
+  if (ui.hudDetailsBtn) {
+    const expanded = next ? "true" : "false";
+    if (ui.hudDetailsBtn.getAttribute("aria-expanded") !== expanded) {
+      ui.hudDetailsBtn.setAttribute("aria-expanded", expanded);
+    }
+    setNodeText(ui.hudDetailsBtn, "detailsBtn", next ? "Ocultar detalles" : "Ver detalles");
+  }
+
+  hudTextCache.detailsOpen = next;
+}
+
+function getMostUrgentOrder() {
+  if (!state.orders.length) {
+    return null;
+  }
+
+  let bestOrder = state.orders[0];
+  let bestRatio =
+    bestOrder.maxPatience > 0 ? clamp(bestOrder.patience / bestOrder.maxPatience, 0, 1) : 1;
+
+  for (const order of state.orders) {
+    const ratio = order.maxPatience > 0 ? clamp(order.patience / order.maxPatience, 0, 1) : 1;
+    if (ratio < bestRatio) {
+      bestRatio = ratio;
+      bestOrder = order;
+    }
+  }
+
+  return {
+    order: bestOrder,
+    ratio: bestRatio
+  };
+}
+
+function getObjectiveText() {
+  if (!state.running) {
+    return "Objetivo: Inicia una partida para comenzar.";
+  }
+
+  if (state.gameMode === "city") {
+    const buildCost = getCityBuildCost();
+    if (state.cityUnits.length === 0) {
+      if (state.money < buildCost) {
+        return `Objetivo: Reune $${buildCost} para tu primer restaurante.`;
+      }
+      return `Objetivo: Construye tu primer restaurante ($${buildCost}).`;
+    }
+
+    if (state.cityUnits.length < totalCityLots() && state.money >= buildCost) {
+      return `Objetivo: Construye otro restaurante ($${buildCost}).`;
+    }
+
+    let cheapestUpgrade = Infinity;
+    let targetLevel = 2;
+    for (const unit of state.cityUnits) {
+      const cost = getCityUpgradeCost(unit);
+      if (cost < cheapestUpgrade) {
+        cheapestUpgrade = cost;
+        targetLevel = clampInt(unit.level + 1, 2, 20, 2);
+      }
+    }
+
+    if (Number.isFinite(cheapestUpgrade) && state.money >= cheapestUpgrade) {
+      return `Objetivo: Mejora un restaurante a nivel ${targetLevel} ($${cheapestUpgrade}).`;
+    }
+
+    const income = totalCityIncome();
+    if (income > 0) {
+      return `Objetivo: Espera ingresos (+$${income}) y sigue expandiendo.`;
+    }
+
+    return "Objetivo: Junta capital para construir la siguiente unidad.";
+  }
+
+  if (state.pendingStoreUnlock) {
+    const armed = state.unlockConfirmZone === state.pendingStoreUnlock && state.unlockConfirmTimer > 0;
+    if (armed) {
+      return `Objetivo: Confirma apertura de sucursal Z${state.pendingStoreUnlock} en CRECE.`;
+    }
+    return `Objetivo: Abre la sucursal Z${state.pendingStoreUnlock} en CRECE.`;
+  }
+
+  if (player.carry) {
+    return `Objetivo: ${getNextStepHint().replace(/\.$/, "")}.`;
+  }
+
+  const urgent = getMostUrgentOrder();
+  if (urgent) {
+    if (urgent.ratio <= 0.35) {
+      return `Objetivo: Urgente Z${urgent.order.zoneId}. Entrega ahora.`;
+    }
+    return `Objetivo: Atiende pedido de Zona ${urgent.order.zoneId}.`;
+  }
+
+  const unlock = nextStoreUnlockProgress();
+  if (unlock && unlock.remaining > 0) {
+    const plural = unlock.remaining === 1 ? "" : "s";
+    return `Objetivo: Compra ${unlock.remaining} mejora${plural} para abrir Z${unlock.zone}.`;
+  }
+
+  const adCost = 25 + state.adBoost * 12;
+  if (state.money >= adCost) {
+    return `Objetivo: Invierte en ANUN por $${adCost} para atraer clientes.`;
+  }
+
+  return "Objetivo: Espera pedidos y optimiza tu flujo.";
+}
+
 function updateHud() {
   if (!state.moneyTween) {
     state.moneyDisplay = state.money;
   }
-  ui.city.textContent = state.city;
-  ui.money.textContent = `$${Math.floor(state.moneyDisplay)}`;
-  ui.day.textContent = String(state.day);
-  ui.rep.textContent = state.stars.toFixed(1);
+
+  setNodeText(ui.city, "city", state.city);
+  setNodeText(ui.money, "money", `$${Math.floor(state.moneyDisplay)}`);
+  setNodeText(ui.day, "day", String(state.day));
+  setNodeText(ui.rep, "rep", state.stars.toFixed(1));
+
   if (state.gameMode === "city") {
-    ui.queue.textContent = `${state.cityUnits.length}/${totalCityLots()}`;
+    setNodeText(ui.queue, "queue", `${state.cityUnits.length}/${totalCityLots()}`);
   } else {
-    ui.queue.textContent = `${state.orders.length}/${state.maxOrders}`;
+    setNodeText(ui.queue, "queue", `${state.orders.length}/${state.maxOrders}`);
   }
-  ui.shops.textContent = String(state.businesses);
+  setNodeText(ui.shops, "shops", String(state.businesses));
+  setNodeText(ui.objective, "objective", getObjectiveText());
+
+  if (hudTextCache.detailsOpen !== state.hudDetailsOpen) {
+    setHudDetailsOpen(state.hudDetailsOpen);
+  }
 }
 
 function resetProgress(cityKey = "usa") {
@@ -1254,6 +1422,8 @@ function resetProgress(cityKey = "usa") {
   state.animTime = 0;
   state.autosaveTimer = 0;
   state.saveDirty = false;
+  state.hudDetailsOpen = false;
+  state.cityRenderTimer = 0;
   state.moveTarget = null;
   state.pendingInteract = null;
   state.sprintBurstTimer = 0;
@@ -1276,6 +1446,7 @@ function resetProgress(cityKey = "usa") {
 
   ui.startOverlay.style.display = "grid";
   setCampaignChoice(cityKey);
+  setHudDetailsOpen(false);
   syncLegacyWorkerFlagsFromStoreProgress();
   updateSprintLabel();
   updateHud();
@@ -3169,6 +3340,7 @@ function drawCityMode() {
   const time = performance.now() / 1000 + timeOffset;
   const daylight = (Math.sin(time * 0.08) + 1) / 2;
   const nightAmount = clamp((0.62 - daylight) * 1.55, 0, 0.8);
+  const lowPerf = state.lowPerfMode;
 
   const sky = ctx.createLinearGradient(0, 0, 0, WORLD.viewH);
   sky.addColorStop(0, "#6ba0cb");
@@ -3178,14 +3350,15 @@ function drawCityMode() {
   ctx.fillRect(0, 0, WORLD.viewW, WORLD.viewH);
 
   // Distant skyline and stars.
-  for (let i = 0; i < 14; i += 1) {
+  const skylineCount = lowPerf ? 9 : 14;
+  for (let i = 0; i < skylineCount; i += 1) {
     const w = 20 + (i % 5) * 8;
     const h = 38 + (i % 4) * 16 + (i % 3) * 10;
-    const x = 6 + i * ((WORLD.viewW - 12) / 14);
+    const x = 6 + i * ((WORLD.viewW - 12) / skylineCount);
     const y = 54 - h + (i % 4) * 4;
     ctx.fillStyle = i % 2 === 0 ? "rgba(20, 44, 66, 0.55)" : "rgba(16, 34, 52, 0.62)";
     ctx.fillRect(x, y, w, h);
-    if (nightAmount > 0.25) {
+    if (nightAmount > 0.25 && !lowPerf) {
       ctx.fillStyle = `rgba(255, 228, 155, ${nightAmount * 0.65})`;
       for (let wy = y + 8; wy < y + h - 4; wy += 9) {
         for (let wx = x + 5; wx < x + w - 3; wx += 8) {
@@ -3197,7 +3370,8 @@ function drawCityMode() {
     }
   }
   if (nightAmount > 0.35) {
-    for (let i = 0; i < 26; i += 1) {
+    const starCount = lowPerf ? 12 : 26;
+    for (let i = 0; i < starCount; i += 1) {
       const sx = (i * 71) % WORLD.viewW;
       const sy = 10 + ((i * 53) % 88);
       ctx.fillStyle = `rgba(236, 246, 255, ${0.15 + nightAmount * 0.5})`;
@@ -3228,11 +3402,12 @@ function drawCityMode() {
 
   // Road markings.
   ctx.fillStyle = "rgba(229, 236, 243, 0.78)";
-  for (let x = blockX + 14; x < blockX + blockW - 8; x += 18) {
+  const roadMarkStep = lowPerf ? 28 : 18;
+  for (let x = blockX + 14; x < blockX + blockW - 8; x += roadMarkStep) {
     ctx.fillRect(x, blockY + 5, 10, 1.5);
     ctx.fillRect(x, blockY + blockH - 7, 10, 1.5);
   }
-  for (let y = blockY + 14; y < blockY + blockH - 8; y += 18) {
+  for (let y = blockY + 14; y < blockY + blockH - 8; y += roadMarkStep) {
     ctx.fillRect(blockX + 5, y, 1.5, 10);
     ctx.fillRect(blockX + blockW - 7, y, 1.5, 10);
   }
@@ -3282,14 +3457,14 @@ function drawCityMode() {
       ctx.fillStyle = "#f0c68d";
       ctx.fillRect(lot.x + 3, lot.y + 3, lot.w - 6, lot.h - 6);
     }
-    if (level >= 14) {
+    if (level >= 14 && !lowPerf) {
       drawSprite("cityRestaurantTower", lot.x + lot.w * 0.2, lot.y + lot.h * 0.02, lot.w * 0.62, lot.h * 0.72);
     }
 
     ctx.fillStyle = district.accent;
     ctx.fillRect(lot.x + 2, lot.y + 2, lot.w - 4, 3);
 
-    if (nightAmount > 0.18) {
+    if (nightAmount > 0.18 && !lowPerf) {
       ctx.fillStyle = `rgba(255, 219, 122, ${0.16 + nightAmount * 0.62})`;
       for (let wy = lot.y + 16; wy < lot.y + lot.h - 18; wy += 12) {
         for (let wx = lot.x + 10; wx < lot.x + lot.w - 10; wx += 10) {
@@ -3307,7 +3482,7 @@ function drawCityMode() {
     ctx.font = "bold 8px monospace";
     ctx.fillText(`L${level} +$${unitIncome}`, lot.x + 4, lot.y + 10);
 
-    if (level >= 3) {
+    if (level >= 3 && !lowPerf) {
       const bob = Math.sin(time * 1.6 + lotId) * 0.9;
       const px = lot.x + 4 + ((time * 8 + lotId * 9) % Math.max(8, lot.w - 12));
       const py = lot.y + lot.h + 2 + bob;
@@ -3348,15 +3523,22 @@ function drawCityMode() {
   const topStartX = blockX - 13;
   const leftStartY = blockY - 13;
 
-  const traffic = [
-    { axis: "x", y: topY, speed: 40, offset: 0, color: "#ef4444", dir: 1 },
-    { axis: "x", y: topY + 4, speed: 33, offset: 19, color: "#f59e0b", dir: 1 },
-    { axis: "x", y: bottomY, speed: 44, offset: 7, color: "#38bdf8", dir: -1 },
-    { axis: "x", y: bottomY - 4, speed: 36, offset: 33, color: "#22c55e", dir: -1 },
-    { axis: "y", x: leftX, speed: 35, offset: 11, color: "#fb7185", dir: 1 },
-    { axis: "y", x: leftX + 4, speed: 30, offset: 42, color: "#a78bfa", dir: 1 },
-    { axis: "y", x: rightX, speed: 38, offset: 17, color: "#14b8a6", dir: -1 }
-  ];
+  const traffic = lowPerf
+    ? [
+        { axis: "x", y: topY, speed: 34, offset: 0, color: "#ef4444", dir: 1 },
+        { axis: "x", y: bottomY, speed: 36, offset: 7, color: "#38bdf8", dir: -1 },
+        { axis: "y", x: leftX, speed: 30, offset: 11, color: "#fb7185", dir: 1 },
+        { axis: "y", x: rightX, speed: 32, offset: 17, color: "#14b8a6", dir: -1 }
+      ]
+    : [
+        { axis: "x", y: topY, speed: 40, offset: 0, color: "#ef4444", dir: 1 },
+        { axis: "x", y: topY + 4, speed: 33, offset: 19, color: "#f59e0b", dir: 1 },
+        { axis: "x", y: bottomY, speed: 44, offset: 7, color: "#38bdf8", dir: -1 },
+        { axis: "x", y: bottomY - 4, speed: 36, offset: 33, color: "#22c55e", dir: -1 },
+        { axis: "y", x: leftX, speed: 35, offset: 11, color: "#fb7185", dir: 1 },
+        { axis: "y", x: leftX + 4, speed: 30, offset: 42, color: "#a78bfa", dir: 1 },
+        { axis: "y", x: rightX, speed: 38, offset: 17, color: "#14b8a6", dir: -1 }
+      ];
   for (const lane of traffic) {
     if (lane.axis === "x") {
       const n = (time * lane.speed + lane.offset) % loopW;
@@ -3370,30 +3552,32 @@ function drawCityMode() {
   }
 
   // Pedestrians moving around perimeter sidewalks.
-  const walkerLoopW = blockW + 18;
-  const walkerLoopH = blockH + 18;
-  const walkers = [
-    { axis: "x", y: blockY - 6, speed: 12, offset: 0, dir: 1, tone: "#f2dcc1" },
-    { axis: "x", y: blockY + blockH + 2, speed: 11, offset: 23, dir: -1, tone: "#f0d6b7" },
-    { axis: "y", x: blockX - 6, speed: 10, offset: 17, dir: 1, tone: "#edd2b3" },
-    { axis: "y", x: blockX + blockW + 2, speed: 13, offset: 31, dir: -1, tone: "#efd8bc" }
-  ];
-  for (const walker of walkers) {
-    let wx = walker.x;
-    let wy = walker.y;
-    if (walker.axis === "x") {
-      const n = (time * walker.speed + walker.offset) % walkerLoopW;
-      wx = walker.dir > 0 ? blockX - 9 + n : blockX - 9 + (walkerLoopW - n);
-      wy = walker.y;
-    } else {
-      const n = (time * walker.speed + walker.offset) % walkerLoopH;
-      wx = walker.x;
-      wy = walker.dir > 0 ? blockY - 9 + n : blockY - 9 + (walkerLoopH - n);
+  if (!lowPerf) {
+    const walkerLoopW = blockW + 18;
+    const walkerLoopH = blockH + 18;
+    const walkers = [
+      { axis: "x", y: blockY - 6, speed: 12, offset: 0, dir: 1, tone: "#f2dcc1" },
+      { axis: "x", y: blockY + blockH + 2, speed: 11, offset: 23, dir: -1, tone: "#f0d6b7" },
+      { axis: "y", x: blockX - 6, speed: 10, offset: 17, dir: 1, tone: "#edd2b3" },
+      { axis: "y", x: blockX + blockW + 2, speed: 13, offset: 31, dir: -1, tone: "#efd8bc" }
+    ];
+    for (const walker of walkers) {
+      let wx = walker.x;
+      let wy = walker.y;
+      if (walker.axis === "x") {
+        const n = (time * walker.speed + walker.offset) % walkerLoopW;
+        wx = walker.dir > 0 ? blockX - 9 + n : blockX - 9 + (walkerLoopW - n);
+        wy = walker.y;
+      } else {
+        const n = (time * walker.speed + walker.offset) % walkerLoopH;
+        wx = walker.x;
+        wy = walker.dir > 0 ? blockY - 9 + n : blockY - 9 + (walkerLoopH - n);
+      }
+      ctx.fillStyle = "#20293a";
+      ctx.fillRect(wx + 1, wy + 2, 3, 5);
+      ctx.fillStyle = walker.tone;
+      ctx.fillRect(wx + 1, wy, 3, 3);
     }
-    ctx.fillStyle = "#20293a";
-    ctx.fillRect(wx + 1, wy + 2, 3, 5);
-    ctx.fillStyle = walker.tone;
-    ctx.fillRect(wx + 1, wy, 3, 3);
   }
 
   // Street lights and light cones.
@@ -3408,13 +3592,15 @@ function drawCityMode() {
       ctx.fillStyle = `rgba(255, 223, 153, ${nightAmount * 0.72})`;
       ctx.fillRect(lx - 1, lyTop + 8, 4, 2);
       ctx.fillRect(lx - 1, lyBottom - 10, 4, 2);
-      ctx.fillStyle = `rgba(255, 223, 153, ${nightAmount * 0.2})`;
-      ctx.beginPath();
-      ctx.arc(lx + 1, lyTop + 10, 8, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.beginPath();
-      ctx.arc(lx + 1, lyBottom - 8, 8, 0, Math.PI * 2);
-      ctx.fill();
+      if (!lowPerf) {
+        ctx.fillStyle = `rgba(255, 223, 153, ${nightAmount * 0.2})`;
+        ctx.beginPath();
+        ctx.arc(lx + 1, lyTop + 10, 8, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.beginPath();
+        ctx.arc(lx + 1, lyBottom - 8, 8, 0, Math.PI * 2);
+        ctx.fill();
+      }
     }
   }
 
@@ -3575,6 +3761,7 @@ function saveSnapshot() {
     unlockConfirmTimer: state.unlockConfirmTimer,
     muted: state.muted,
     hapticsEnabled: state.hapticsEnabled,
+    hudDetailsOpen: state.hudDetailsOpen,
     dashAuto: state.dashAuto
   };
 }
@@ -3785,9 +3972,11 @@ function applySave(data) {
   state.autoCleanerUnlocked = legacyAutoCleaner;
   state.muted = Boolean(data.muted);
   state.hapticsEnabled = typeof data.hapticsEnabled === "boolean" ? data.hapticsEnabled : true;
+  state.hudDetailsOpen = typeof data.hudDetailsOpen === "boolean" ? data.hudDetailsOpen : false;
   state.dashAuto = Boolean(data.dashAuto);
   state.sprintBurstTimer = 0;
   state.sprintHeld = false;
+  state.cityRenderTimer = 0;
   state.lastTapMs = 0;
   state.lastTapX = 0;
   state.lastTapY = 0;
@@ -3970,6 +4159,7 @@ function applySave(data) {
   updateSoundLabel();
   updateHapticLabel();
   updateSprintLabel();
+  setHudDetailsOpen(state.hudDetailsOpen);
   setCampaignChoice(campaignKey);
   updateHud();
 
@@ -4273,6 +4463,14 @@ function setupMainButtons() {
     markDirty();
   });
 
+  if (ui.hudDetailsBtn) {
+    bindTap(ui.hudDetailsBtn, () => {
+      setHudDetailsOpen(!state.hudDetailsOpen);
+      sound.play("ui");
+      markDirty();
+    });
+  }
+
   if (ui.sprintBtn) {
     const stopSprint = () => {
       if (!state.sprintHeld) {
@@ -4324,6 +4522,12 @@ function startShift(fromSave = false) {
 }
 
 function tick(ts) {
+  if (typeof document !== "undefined" && document.hidden) {
+    last = ts;
+    requestAnimationFrame(tick);
+    return;
+  }
+
   const dt = Math.min(0.033, (ts - last) / 1000 || 0);
   last = ts;
 
@@ -4408,11 +4612,27 @@ function tick(ts) {
   }
 
   updateHud();
-  render();
+
+  let shouldRender = true;
+  if (state.running && state.gameMode === "city" && state.lowPerfMode) {
+    state.cityRenderTimer += dt;
+    if (state.cityRenderTimer < 1 / CITY_LOW_FPS) {
+      shouldRender = false;
+    } else {
+      state.cityRenderTimer = 0;
+    }
+  } else {
+    state.cityRenderTimer = 0;
+  }
+
+  if (shouldRender) {
+    render();
+  }
   requestAnimationFrame(tick);
 }
 
 function bootstrap() {
+  state.lowPerfMode = detectLowPerformanceMode();
   loadSprites();
   resizeCanvas();
   setCampaignChoice("usa");

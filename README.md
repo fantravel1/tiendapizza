@@ -12,6 +12,8 @@ Last updated: **March 1, 2026**
 - Main runtime is canvas-based (`deploy/game.js`).
 - Recent visual upgrade added sprite-driven pizzas, characters, stations, storefronts, and scenery.
 - City mini-game now renders as an actual city grid with roads, districts, traffic, pedestrians, and day/night lighting.
+- Mobile HUD now prioritizes core stats, a live objective chip, and optional collapsible detail stats.
+- Low-end devices now use an automatic performance profile for smoother city-mode gameplay.
 
 ## Project Structure
 
@@ -37,6 +39,8 @@ Last updated: **March 1, 2026**
 - Unlockable city mode with restaurant construction on empty lots.
 - Unit upgrades increase passive income over time.
 - City view includes district styling, animated vehicles/pedestrians, and time-of-day mood lighting.
+- Compact HUD with contextual objective guidance and toggleable secondary indicators.
+- Automatic low-end optimization: reduced city visual density, capped city render frequency, and lower DPR.
 
 ## Art/Visual System
 
@@ -77,6 +81,8 @@ Option 2:
 - Added second city visual pass: district theming, road markings, animated traffic/pedestrians, and day/night lighting.
 - Sprint 1 mobile safety/perf pass: spend-confirm taps for purchases, clipped hint prevention, DPR clamp, and microcopy cleanup.
 - Sprint 2 mobile input pass: pointer-up tap filtering (drag threshold), dedicated hold-to-sprint control, and vibration toggle with save persistence.
+- Sprint 3 mobile HUD pass: priority-chip HUD layout, contextual objective messaging, collapsible details panel, and cached HUD text updates to reduce per-frame DOM writes.
+- Sprint 4 low-end performance pass: auto-detected low-performance mode (coarse-pointer low-spec devices), reduced DPR cap, lighter city-scene effects, city render throttle (~30 FPS), and hidden-tab tick pause to cut CPU/battery usage.
 - Added/updated screenshot automation in `tools/capture-deploy-visuals.js`.
 
 ## README Maintenance Policy
