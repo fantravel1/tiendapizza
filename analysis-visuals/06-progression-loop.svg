@@ -1,0 +1,57 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="1600" height="900" viewBox="0 0 1600 900" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bg3" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#111827"/>
+      <stop offset="100%" stop-color="#030712"/>
+    </linearGradient>
+  </defs>
+  <rect width="1600" height="900" fill="url(#bg3)"/>
+  <text x="90" y="105" fill="#f8fafc" font-size="54" font-family="Arial, Helvetica, sans-serif" font-weight="700">
+    Progression Loop - Recommended
+  </text>
+  <text x="90" y="155" fill="#cbd5e1" font-size="28" font-family="Arial, Helvetica, sans-serif">
+    Layer clarity on top of your existing deep systems
+  </text>
+
+  <circle cx="230" cy="430" r="118" fill="#166534" stroke="#4ade80" stroke-width="4"/>
+  <text x="170" y="414" fill="#dcfce7" font-size="28" font-family="Arial, Helvetica, sans-serif" font-weight="700">Onboard</text>
+  <text x="148" y="448" fill="#dcfce7" font-size="20" font-family="Arial, Helvetica, sans-serif">30 sec tutorial</text>
+
+  <circle cx="520" cy="290" r="118" fill="#7c2d12" stroke="#fb923c" stroke-width="4"/>
+  <text x="460" y="274" fill="#ffedd5" font-size="28" font-family="Arial, Helvetica, sans-serif" font-weight="700">Rush Loop</text>
+  <text x="430" y="308" fill="#ffedd5" font-size="20" font-family="Arial, Helvetica, sans-serif">cook - serve - tip</text>
+
+  <circle cx="850" cy="250" r="118" fill="#1d4ed8" stroke="#60a5fa" stroke-width="4"/>
+  <text x="772" y="234" fill="#dbeafe" font-size="28" font-family="Arial, Helvetica, sans-serif" font-weight="700">Store Mastery</text>
+  <text x="766" y="268" fill="#dbeafe" font-size="20" font-family="Arial, Helvetica, sans-serif">upgrade ladder</text>
+
+  <circle cx="1170" cy="330" r="118" fill="#7e22ce" stroke="#c084fc" stroke-width="4"/>
+  <text x="1088" y="314" fill="#f3e8ff" font-size="28" font-family="Arial, Helvetica, sans-serif" font-weight="700">Franchise</text>
+  <text x="1080" y="348" fill="#f3e8ff" font-size="20" font-family="Arial, Helvetica, sans-serif">zone expansion</text>
+
+  <circle cx="1320" cy="590" r="118" fill="#0f766e" stroke="#2dd4bf" stroke-width="4"/>
+  <text x="1240" y="574" fill="#ccfbf1" font-size="28" font-family="Arial, Helvetica, sans-serif" font-weight="700">City Mode</text>
+  <text x="1230" y="608" fill="#ccfbf1" font-size="20" font-family="Arial, Helvetica, sans-serif">idle growth layer</text>
+
+  <circle cx="900" cy="680" r="118" fill="#be123c" stroke="#fb7185" stroke-width="4"/>
+  <text x="824" y="664" fill="#ffe4e6" font-size="28" font-family="Arial, Helvetica, sans-serif" font-weight="700">Meta Rewards</text>
+  <text x="812" y="698" fill="#ffe4e6" font-size="20" font-family="Arial, Helvetica, sans-serif">skins + perks</text>
+
+  <circle cx="520" cy="650" r="118" fill="#92400e" stroke="#f59e0b" stroke-width="4"/>
+  <text x="456" y="634" fill="#fef3c7" font-size="28" font-family="Arial, Helvetica, sans-serif" font-weight="700">Quests</text>
+  <text x="426" y="668" fill="#fef3c7" font-size="20" font-family="Arial, Helvetica, sans-serif">daily milestone goals</text>
+
+  <line x1="334" y1="382" x2="412" y2="335" stroke="#e2e8f0" stroke-width="5"/>
+  <line x1="638" y1="276" x2="732" y2="262" stroke="#e2e8f0" stroke-width="5"/>
+  <line x1="966" y1="271" x2="1058" y2="305" stroke="#e2e8f0" stroke-width="5"/>
+  <line x1="1240" y1="418" x2="1288" y2="488" stroke="#e2e8f0" stroke-width="5"/>
+  <line x1="1216" y1="638" x2="1002" y2="668" stroke="#e2e8f0" stroke-width="5"/>
+  <line x1="782" y1="676" x2="638" y2="664" stroke="#e2e8f0" stroke-width="5"/>
+  <line x1="424" y1="590" x2="296" y2="500" stroke="#e2e8f0" stroke-width="5"/>
+
+  <rect x="90" y="780" width="1420" height="72" rx="12" fill="#0b1220" stroke="#334155" stroke-width="2"/>
+  <text x="130" y="826" fill="#93c5fd" font-size="26" font-family="Arial, Helvetica, sans-serif">
+    Keep your current systems; add stronger signposting and rewards so players can read the loop in under 5 seconds.
+  </text>
+</svg>

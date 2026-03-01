@@ -181,8 +181,79 @@ const UPGRADE_MOMENTUM_BONUS_RATE = 0.12;
 const CITY_GRID_COLS = 6;
 const CITY_GRID_ROWS = 5;
 const CITY_GRID_GAP = 6;
+const SPRITE_SOURCES = {
+  dough: "assets/pizza-dough.svg",
+  sauce: "assets/pizza-sauce.svg",
+  cheese: "assets/pizza-cheese.svg",
+  baked: "assets/pizza-baked.svg",
+  table: "assets/table.svg",
+  tree: "assets/tree.svg",
+  bush: "assets/bush.svg",
+  iconDough: "assets/icon-dough.svg",
+  iconSauce: "assets/icon-sauce.svg",
+  iconCheese: "assets/icon-cheese.svg",
+  iconCounter: "assets/icon-counter.svg",
+  iconAds: "assets/icon-ads.svg",
+  iconUpgrade: "assets/icon-upgrade.svg",
+  oven: "assets/oven.svg",
+  player: "assets/character-player.svg",
+  workerCook: "assets/character-cook.svg",
+  workerRunner: "assets/character-runner.svg",
+  workerCleaner: "assets/character-cleaner.svg",
+  customer: "assets/character-customer.svg",
+  customerAngry: "assets/character-customer-angry.svg",
+  stationWork: "assets/station-work.svg",
+  stationCounter: "assets/station-counter.svg",
+  stationUpgrade: "assets/station-upgrade.svg",
+  stationAds: "assets/station-ads.svg",
+  storefront: "assets/storefront.svg",
+  cityLot: "assets/city-empty-lot.svg",
+  cityRestaurant: "assets/city-restaurant.svg",
+  cityRestaurantTower: "assets/city-restaurant-tower.svg"
+};
+const sprites = {};
 let selectedCampaign = "usa";
 let last = 0;
+
+function loadSprites() {
+  for (const [key, src] of Object.entries(SPRITE_SOURCES)) {
+    const image = new Image();
+    image.decoding = "async";
+    image.src = src;
+    sprites[key] = image;
+  }
+}
+
+function spriteAvailable(key) {
+  const image = sprites[key];
+  return Boolean(image && image.complete && image.naturalWidth > 0);
+}
+
+function drawSprite(key, x, y, width, height) {
+  if (!spriteAvailable(key)) {
+    return false;
+  }
+  ctx.drawImage(sprites[key], x, y, width, height);
+  return true;
+}
+
+function pizzaSpriteKey(stage) {
+  if (stage === "dough") {
+    return "dough";
+  }
+  if (stage === "sauce") {
+    return "sauce";
+  }
+  if (stage === "cheese") {
+    return "cheese";
+  }
+  return "baked";
+}
+
+function drawPizzaSprite(stage, centerX, centerY, size) {
+  const key = pizzaSpriteKey(stage);
+  return drawSprite(key, centerX - size / 2, centerY - size / 2, size, size);
+}
 
 function createPrepWorker(zoneId = 1) {
   const zone = zoneById(zoneId);
@@ -2522,6 +2593,8 @@ function drawZoneDecor() {
     ctx.fillStyle = "rgba(45, 27, 14, 0.26)";
     ctx.fillRect(x + 2, 154 - WORLD.cameraY, w - 4, 8);
 
+    drawSprite("storefront", x + 12, 146 - WORLD.cameraY, w - 24, 286);
+
     ctx.fillStyle = zone.tint;
     ctx.fillRect(x + 56, 74 - WORLD.cameraY, 230, 36);
     ctx.fillRect(x + 326, 74 - WORLD.cameraY, 220, 36);
@@ -2540,6 +2613,19 @@ function drawZoneDecor() {
       ctx.fillText(`P${progress.prestigeLevel} C${progress.completions}`, x + 218, 31 - WORLD.cameraY);
     }
 
+    // Scenic layer with trees and bushes so each district feels less abstract.
+    const topY = 120 - WORLD.cameraY;
+    drawSprite("tree", x + 18, topY - 54, 42, 54);
+    drawSprite("bush", x + 144, topY - 30, 54, 30);
+    drawSprite("tree", x + w - 64, topY - 56, 44, 56);
+    drawSprite("bush", x + w - 192, topY - 32, 58, 32);
+
+    const bottomY = 604 - WORLD.cameraY;
+    drawSprite("bush", x + 72, bottomY, 62, 34);
+    drawSprite("tree", x + 198, bottomY - 22, 38, 50);
+    drawSprite("bush", x + w - 220, bottomY, 62, 34);
+    drawSprite("tree", x + w - 94, bottomY - 24, 40, 52);
+
     if (zone.minBusinesses > state.businesses) {
       ctx.fillStyle = "rgba(15, 10, 6, 0.56)";
       ctx.fillRect(x, -WORLD.cameraY, w, WORLD.height);
@@ -2556,6 +2642,18 @@ function drawZoneDecor() {
 }
 
 function drawStationIcon(station, x, y) {
+  let icon = "";
+  if (station.type === "dough") icon = "iconDough";
+  else if (station.type === "sauce") icon = "iconSauce";
+  else if (station.type === "cheese") icon = "iconCheese";
+  else if (station.type === "counter") icon = "iconCounter";
+  else if (station.type === "ads") icon = "iconAds";
+  else if (station.type === "upgrade") icon = "iconUpgrade";
+
+  if (icon && drawSprite(icon, x - 9, y - 9, 18, 18)) {
+    return;
+  }
+
   if (station.type === "dough") ctx.fillStyle = "#e8c188";
   else if (station.type === "sauce") ctx.fillStyle = "#d24536";
   else if (station.type === "cheese") ctx.fillStyle = "#f3dc75";
@@ -2578,10 +2676,27 @@ function drawStations() {
     const sx = station.x - WORLD.cameraX;
     const sy = station.y - WORLD.cameraY;
 
-    ctx.fillStyle = station.color;
-    ctx.fillRect(sx, sy, station.w, station.h);
-    ctx.strokeStyle = "#2a160d";
-    ctx.strokeRect(sx, sy, station.w, station.h);
+    let stationSprite = "stationWork";
+    if (station.type === "counter") {
+      stationSprite = "stationCounter";
+    } else if (station.type === "upgrade") {
+      stationSprite = "stationUpgrade";
+    } else if (station.type === "ads") {
+      stationSprite = "stationAds";
+    }
+
+    if (!drawSprite(stationSprite, sx, sy, station.w, station.h)) {
+      ctx.fillStyle = station.color;
+      ctx.fillRect(sx, sy, station.w, station.h);
+      ctx.strokeStyle = "#2a160d";
+      ctx.strokeRect(sx, sy, station.w, station.h);
+    } else if (station.type === "dough" || station.type === "sauce" || station.type === "cheese") {
+      ctx.save();
+      ctx.globalAlpha = 0.24;
+      ctx.fillStyle = station.color;
+      ctx.fillRect(sx + 4, sy + 4, station.w - 8, station.h - 8);
+      ctx.restore();
+    }
 
     if (station.type === "upgrade" && state.pendingStoreUnlock) {
       const armed = state.unlockConfirmZone === state.pendingStoreUnlock && state.unlockConfirmTimer > 0;
@@ -2658,16 +2773,22 @@ function drawStations() {
     const x = oven.x - OVEN_WIDTH / 2 - WORLD.cameraX;
     const y = oven.y - OVEN_HEIGHT / 2 - WORLD.cameraY;
 
-    ctx.fillStyle = "#5f6c74";
-    ctx.fillRect(x, y, OVEN_WIDTH, OVEN_HEIGHT);
-    ctx.strokeStyle = "#1e252a";
-    ctx.strokeRect(x, y, OVEN_WIDTH, OVEN_HEIGHT);
+    if (!drawSprite("oven", x, y, OVEN_WIDTH, OVEN_HEIGHT)) {
+      ctx.fillStyle = "#5f6c74";
+      ctx.fillRect(x, y, OVEN_WIDTH, OVEN_HEIGHT);
+      ctx.strokeStyle = "#1e252a";
+      ctx.strokeRect(x, y, OVEN_WIDTH, OVEN_HEIGHT);
 
-    ctx.fillStyle = "#fff5df";
-    ctx.font = "bold 9px monospace";
-    ctx.fillText("HORNO", x + 14, y + 12);
-    ctx.font = "bold 10px monospace";
-    ctx.fillText(`Z${oven.zoneId}`, x + 25, y + 24);
+      ctx.fillStyle = "#fff5df";
+      ctx.font = "bold 9px monospace";
+      ctx.fillText("HORNO", x + 14, y + 12);
+      ctx.font = "bold 10px monospace";
+      ctx.fillText(`Z${oven.zoneId}`, x + 25, y + 24);
+    } else {
+      ctx.fillStyle = "#f4f0e6";
+      ctx.font = "bold 9px monospace";
+      ctx.fillText(`Z${oven.zoneId}`, x + 26, y + 12);
+    }
 
     if (oven.busy) {
       const pct = oven.progress / oven.bakeTime;
@@ -2696,11 +2817,12 @@ function drawDiningAreas() {
     for (let i = 0; i < 6; i += 1) {
       const seat = getEatingSeatPoint(zone.id, i);
       const p = worldToScreen(seat.x, seat.y);
-
-      ctx.fillStyle = "rgba(74, 43, 17, 0.55)";
-      ctx.fillRect(p.x - 12, p.y - 3, 24, 6);
-      ctx.fillStyle = "#d7ba88";
-      ctx.fillRect(p.x - 8, p.y - 2, 16, 4);
+      if (!drawSprite("table", p.x - 16, p.y - 10, 32, 20)) {
+        ctx.fillStyle = "rgba(74, 43, 17, 0.55)";
+        ctx.fillRect(p.x - 12, p.y - 3, 24, 6);
+        ctx.fillStyle = "#d7ba88";
+        ctx.fillRect(p.x - 8, p.y - 2, 16, 4);
+      }
     }
   }
 }
@@ -2708,16 +2830,18 @@ function drawDiningAreas() {
 function drawDroppedItems() {
   for (const item of state.droppedItems) {
     const p = worldToScreen(item.x, item.y);
-    if (item.stage === "dough") ctx.fillStyle = "#e8c188";
-    else if (item.stage === "sauce") ctx.fillStyle = "#d24536";
-    else if (item.stage === "cheese") ctx.fillStyle = "#f3db73";
-    else ctx.fillStyle = "#c57b36";
+    if (!drawPizzaSprite(item.stage, p.x, p.y, 14)) {
+      if (item.stage === "dough") ctx.fillStyle = "#e8c188";
+      else if (item.stage === "sauce") ctx.fillStyle = "#d24536";
+      else if (item.stage === "cheese") ctx.fillStyle = "#f3db73";
+      else ctx.fillStyle = "#c57b36";
 
-    ctx.beginPath();
-    ctx.arc(p.x, p.y, 5.8, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.strokeStyle = "#4a2b0b";
-    ctx.stroke();
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, 5.8, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.strokeStyle = "#4a2b0b";
+      ctx.stroke();
+    }
   }
 }
 
@@ -2729,55 +2853,57 @@ function drawCustomers() {
 
     const p = worldToScreen(customer.x, customer.y);
     const bob = customer.state === "eating" ? Math.sin(customer.bob) * 0.4 : Math.sin(customer.bob) * 1.4;
-
-    ctx.fillStyle = customer.angry ? "#b84d43" : "#f0dbc1";
-    ctx.beginPath();
-    ctx.arc(p.x, p.y - 12 + bob, 6, 0, Math.PI * 2);
-    ctx.fill();
-
-    ctx.fillStyle = customer.angry ? "#84413c" : "#5a7aa3";
-    if (customer.state === "eating") {
-      ctx.fillRect(p.x - 5, p.y - 4 + bob, 10, 10);
-      ctx.fillStyle = "#f3db73";
+    const spriteKey = customer.angry ? "customerAngry" : "customer";
+    if (!drawSprite(spriteKey, p.x - 11, p.y - 26 + bob, 22, 32)) {
+      ctx.fillStyle = customer.angry ? "#b84d43" : "#f0dbc1";
       ctx.beginPath();
-      ctx.arc(p.x + 8, p.y - 2 + bob, 3, 0, Math.PI * 2);
+      ctx.arc(p.x, p.y - 12 + bob, 6, 0, Math.PI * 2);
       ctx.fill();
-    } else {
+
+      ctx.fillStyle = customer.angry ? "#84413c" : "#5a7aa3";
       ctx.fillRect(p.x - 5, p.y - 6 + bob, 10, 12);
+
+      ctx.fillStyle = "#2c1a10";
+      ctx.fillRect(p.x - 4, p.y + 6 + bob, 3, 6);
+      ctx.fillRect(p.x + 1, p.y + 6 + bob, 3, 6);
     }
 
-    ctx.fillStyle = "#2c1a10";
-    ctx.fillRect(p.x - 4, p.y + 6 + bob, 3, 6);
-    ctx.fillRect(p.x + 1, p.y + 6 + bob, 3, 6);
+    if (customer.state === "eating") {
+      drawPizzaSprite("baked", p.x + 10, p.y - 2 + bob, 8);
+    }
   }
 }
 
-function drawWorker(worker, color, label, carry = null) {
+function drawWorker(worker, spriteKey, color, label, carry = null) {
   if (!worker) {
     return;
   }
 
   const p = worldToScreen(worker.x, worker.y);
 
-  ctx.fillStyle = "#f0dbc1";
-  ctx.beginPath();
-  ctx.arc(p.x, p.y - 12, 5.8, 0, Math.PI * 2);
-  ctx.fill();
+  if (!drawSprite(spriteKey, p.x - 11, p.y - 26, 22, 32)) {
+    ctx.fillStyle = "#f0dbc1";
+    ctx.beginPath();
+    ctx.arc(p.x, p.y - 12, 5.8, 0, Math.PI * 2);
+    ctx.fill();
 
-  ctx.fillStyle = color;
-  ctx.fillRect(p.x - 5, p.y - 6, 10, 12);
-  ctx.fillStyle = "#2c1a10";
-  ctx.fillRect(p.x - 4, p.y + 6, 3, 6);
-  ctx.fillRect(p.x + 1, p.y + 6, 3, 6);
+    ctx.fillStyle = color;
+    ctx.fillRect(p.x - 5, p.y - 6, 10, 12);
+    ctx.fillStyle = "#2c1a10";
+    ctx.fillRect(p.x - 4, p.y + 6, 3, 6);
+    ctx.fillRect(p.x + 1, p.y + 6, 3, 6);
+  }
 
   if (carry) {
-    if (carry === "dough") ctx.fillStyle = "#e8c188";
-    else if (carry === "sauce") ctx.fillStyle = "#d24536";
-    else if (carry === "cheese") ctx.fillStyle = "#f3db73";
-    else ctx.fillStyle = "#c57b36";
-    ctx.beginPath();
-    ctx.arc(p.x + 9, p.y - 2, 4.2, 0, Math.PI * 2);
-    ctx.fill();
+    if (!drawPizzaSprite(carry, p.x + 9, p.y - 2, 9)) {
+      if (carry === "dough") ctx.fillStyle = "#e8c188";
+      else if (carry === "sauce") ctx.fillStyle = "#d24536";
+      else if (carry === "cheese") ctx.fillStyle = "#f3db73";
+      else ctx.fillStyle = "#c57b36";
+      ctx.beginPath();
+      ctx.arc(p.x + 9, p.y - 2, 4.2, 0, Math.PI * 2);
+      ctx.fill();
+    }
   }
 
   ctx.fillStyle = "rgba(22, 12, 7, 0.75)";
@@ -2789,13 +2915,13 @@ function drawWorker(worker, color, label, carry = null) {
 
 function drawWorkers() {
   for (const worker of state.prepWorkers) {
-    drawWorker(worker, "#4a9f5b", "COC", worker ? worker.carry : null);
+    drawWorker(worker, "workerCook", "#4a9f5b", "COC", worker ? worker.carry : null);
   }
   for (const worker of state.runnerWorkers) {
-    drawWorker(worker, "#4f73b8", "RUN", worker ? worker.carry : null);
+    drawWorker(worker, "workerRunner", "#4f73b8", "RUN", worker ? worker.carry : null);
   }
   for (const worker of state.cleanerWorkers) {
-    drawWorker(worker, "#ad7f3c", "LIM", null);
+    drawWorker(worker, "workerCleaner", "#ad7f3c", "LIM", null);
   }
 }
 
@@ -2803,32 +2929,35 @@ function drawPlayer() {
   const x = player.x - WORLD.cameraX;
   const y = player.y - WORLD.cameraY;
   const bob = state.moving ? Math.sin(state.animTime * 14) * 1.4 : 0;
+  if (!drawSprite("player", x - 14, y - 38 + bob, 28, 42)) {
+    ctx.fillStyle = "#f3d7b8";
+    ctx.beginPath();
+    ctx.arc(x, y - 20 + bob, 7, 0, Math.PI * 2);
+    ctx.fill();
 
-  ctx.fillStyle = "#f3d7b8";
-  ctx.beginPath();
-  ctx.arc(x, y - 20 + bob, 7, 0, Math.PI * 2);
-  ctx.fill();
+    ctx.fillStyle = "#d92f21";
+    ctx.fillRect(x - 8, y - 30 + bob, 16, 4);
 
-  ctx.fillStyle = "#d92f21";
-  ctx.fillRect(x - 8, y - 30 + bob, 16, 4);
+    ctx.fillStyle = "#2f4f9f";
+    ctx.fillRect(x - 7, y - 13 + bob, 14, 16);
 
-  ctx.fillStyle = "#2f4f9f";
-  ctx.fillRect(x - 7, y - 13 + bob, 14, 16);
-
-  ctx.fillStyle = "#1e2d62";
-  ctx.fillRect(x - 6, y + 2 + bob, 5, 10);
-  ctx.fillRect(x + 1, y + 2 + bob, 5, 10);
+    ctx.fillStyle = "#1e2d62";
+    ctx.fillRect(x - 6, y + 2 + bob, 5, 10);
+    ctx.fillRect(x + 1, y + 2 + bob, 5, 10);
+  }
 
   if (player.carry) {
-    if (player.carry.stage === "dough") ctx.fillStyle = "#e8c188";
-    else if (player.carry.stage === "sauce") ctx.fillStyle = "#d24536";
-    else if (player.carry.stage === "cheese") ctx.fillStyle = "#f3db73";
-    else ctx.fillStyle = "#c57b36";
-
     const carryX = player.facing === "left" ? x - 14 : x + 14;
-    ctx.beginPath();
-    ctx.arc(carryX, y - 12 + bob, 5.5, 0, Math.PI * 2);
-    ctx.fill();
+    if (!drawPizzaSprite(player.carry.stage, carryX, y - 12 + bob, 12)) {
+      if (player.carry.stage === "dough") ctx.fillStyle = "#e8c188";
+      else if (player.carry.stage === "sauce") ctx.fillStyle = "#d24536";
+      else if (player.carry.stage === "cheese") ctx.fillStyle = "#f3db73";
+      else ctx.fillStyle = "#c57b36";
+
+      ctx.beginPath();
+      ctx.arc(carryX, y - 12 + bob, 5.5, 0, Math.PI * 2);
+      ctx.fill();
+    }
   }
 }
 
@@ -2959,59 +3088,288 @@ function drawChaosTint() {
   }
 }
 
+function cityNoise(seed) {
+  const raw = Math.sin(seed * 12.9898) * 43758.5453;
+  return raw - Math.floor(raw);
+}
+
 function drawCityMode() {
-  const grad = ctx.createLinearGradient(0, 0, 0, WORLD.viewH);
-  grad.addColorStop(0, "#1d3a53");
-  grad.addColorStop(1, "#0f2433");
-  ctx.fillStyle = grad;
+  const timeOffset = typeof window !== "undefined" && typeof window.__cityTimeOffset === "number"
+    ? window.__cityTimeOffset
+    : 0;
+  const time = performance.now() / 1000 + timeOffset;
+  const daylight = (Math.sin(time * 0.08) + 1) / 2;
+  const nightAmount = clamp((0.62 - daylight) * 1.55, 0, 0.8);
+
+  const sky = ctx.createLinearGradient(0, 0, 0, WORLD.viewH);
+  sky.addColorStop(0, "#6ba0cb");
+  sky.addColorStop(0.56, "#3f6d95");
+  sky.addColorStop(1, "#1f3243");
+  ctx.fillStyle = sky;
   ctx.fillRect(0, 0, WORLD.viewW, WORLD.viewH);
 
+  // Distant skyline and stars.
+  for (let i = 0; i < 14; i += 1) {
+    const w = 20 + (i % 5) * 8;
+    const h = 38 + (i % 4) * 16 + (i % 3) * 10;
+    const x = 6 + i * ((WORLD.viewW - 12) / 14);
+    const y = 54 - h + (i % 4) * 4;
+    ctx.fillStyle = i % 2 === 0 ? "rgba(20, 44, 66, 0.55)" : "rgba(16, 34, 52, 0.62)";
+    ctx.fillRect(x, y, w, h);
+    if (nightAmount > 0.25) {
+      ctx.fillStyle = `rgba(255, 228, 155, ${nightAmount * 0.65})`;
+      for (let wy = y + 8; wy < y + h - 4; wy += 9) {
+        for (let wx = x + 5; wx < x + w - 3; wx += 8) {
+          if (cityNoise(i * 1000 + wx * 17 + wy * 31) > 0.72) {
+            ctx.fillRect(wx, wy, 2, 3);
+          }
+        }
+      }
+    }
+  }
+  if (nightAmount > 0.35) {
+    for (let i = 0; i < 26; i += 1) {
+      const sx = (i * 71) % WORLD.viewW;
+      const sy = 10 + ((i * 53) % 88);
+      ctx.fillStyle = `rgba(236, 246, 255, ${0.15 + nightAmount * 0.5})`;
+      ctx.fillRect(sx, sy, 2, 2);
+    }
+  }
+
   const layout = getCityLayout();
-  ctx.fillStyle = "rgba(20, 36, 49, 0.7)";
-  ctx.fillRect(layout.x - 6, layout.y - 6, layout.gridW + 12, layout.gridH + 12);
+  const roadPad = 10;
+  const stepX = layout.cellW + CITY_GRID_GAP;
+  const stepY = layout.cellH + CITY_GRID_GAP;
+  const blockX = layout.x - roadPad;
+  const blockY = layout.y - roadPad;
+  const blockW = layout.gridW + roadPad * 2;
+  const blockH = layout.gridH + roadPad * 2;
+
+  ctx.fillStyle = "#3f474f";
+  ctx.fillRect(blockX, blockY, blockW, blockH);
+  ctx.fillStyle = "#545d64";
+  for (let col = 1; col < CITY_GRID_COLS; col += 1) {
+    const laneX = layout.x + col * stepX - CITY_GRID_GAP;
+    ctx.fillRect(laneX, blockY, CITY_GRID_GAP, blockH);
+  }
+  for (let row = 1; row < CITY_GRID_ROWS; row += 1) {
+    const laneY = layout.y + row * stepY - CITY_GRID_GAP;
+    ctx.fillRect(blockX, laneY, blockW, CITY_GRID_GAP);
+  }
+
+  // Road markings.
+  ctx.fillStyle = "rgba(229, 236, 243, 0.78)";
+  for (let x = blockX + 14; x < blockX + blockW - 8; x += 18) {
+    ctx.fillRect(x, blockY + 5, 10, 1.5);
+    ctx.fillRect(x, blockY + blockH - 7, 10, 1.5);
+  }
+  for (let y = blockY + 14; y < blockY + blockH - 8; y += 18) {
+    ctx.fillRect(blockX + 5, y, 1.5, 10);
+    ctx.fillRect(blockX + blockW - 7, y, 1.5, 10);
+  }
+
+  const districtDefs = [
+    { name: "CENTRO", tint: "rgba(245, 158, 11, 0.09)", accent: "#f59e0b" },
+    { name: "RIBERA", tint: "rgba(56, 189, 248, 0.09)", accent: "#38bdf8" },
+    { name: "NORTE", tint: "rgba(34, 197, 94, 0.09)", accent: "#22c55e" }
+  ];
+
+  for (let district = 0; district < districtDefs.length; district += 1) {
+    const labelX = layout.x + district * stepX * 2 + 4;
+    const labelW = stepX * 2 - 10;
+    const info = districtDefs[district];
+    ctx.fillStyle = "rgba(8, 16, 24, 0.68)";
+    ctx.fillRect(labelX, blockY - 15, labelW, 12);
+    ctx.fillStyle = info.accent;
+    ctx.font = "bold 8px monospace";
+    ctx.fillText(info.name, labelX + 4, blockY - 6);
+  }
 
   for (let lotId = 0; lotId < totalCityLots(); lotId += 1) {
     const lot = cityLotRect(lotId);
     const unit = getCityUnitAtLot(lotId);
-    ctx.fillStyle = unit ? "#547a8e" : "#2a4659";
-    ctx.fillRect(lot.x, lot.y, lot.w, lot.h);
-    ctx.strokeStyle = "rgba(228, 241, 255, 0.2)";
-    ctx.strokeRect(lot.x, lot.y, lot.w, lot.h);
+    const col = lotId % CITY_GRID_COLS;
+    const district = districtDefs[Math.floor(col / 2)] || districtDefs[0];
+
+    ctx.fillStyle = "#c7d0d8";
+    ctx.fillRect(lot.x - 1, lot.y - 1, lot.w + 2, lot.h + 2);
 
     if (!unit) {
-      ctx.fillStyle = "rgba(230, 240, 250, 0.36)";
-      ctx.font = "bold 12px monospace";
+      if (!drawSprite("cityLot", lot.x, lot.y, lot.w, lot.h)) {
+        ctx.fillStyle = "#93b285";
+        ctx.fillRect(lot.x, lot.y, lot.w, lot.h);
+      }
+      ctx.fillStyle = district.tint;
+      ctx.fillRect(lot.x, lot.y, lot.w, lot.h);
+      ctx.fillStyle = "rgba(255, 255, 255, 0.72)";
+      ctx.font = "bold 13px monospace";
       ctx.fillText("+", lot.x + lot.w / 2 - 4, lot.y + lot.h / 2 + 4);
       continue;
     }
 
     const level = clampInt(unit.level, 1, 20, 1);
-    const bodyH = Math.min(lot.h - 10, 10 + level * 2);
-    const bodyY = lot.y + lot.h - bodyH - 2;
-    ctx.fillStyle = "#ffd28c";
-    ctx.fillRect(lot.x + 4, bodyY, lot.w - 8, bodyH);
-    ctx.fillStyle = "#7f4b2c";
-    ctx.fillRect(lot.x + 4, bodyY, lot.w - 8, 4);
+    const sprite = level >= 8 ? "cityRestaurantTower" : "cityRestaurant";
+    if (!drawSprite(sprite, lot.x, lot.y, lot.w, lot.h)) {
+      ctx.fillStyle = "#f0c68d";
+      ctx.fillRect(lot.x + 3, lot.y + 3, lot.w - 6, lot.h - 6);
+    }
+    if (level >= 14) {
+      drawSprite("cityRestaurantTower", lot.x + lot.w * 0.2, lot.y + lot.h * 0.02, lot.w * 0.62, lot.h * 0.72);
+    }
 
-    ctx.fillStyle = "#2d1708";
-    ctx.font = "bold 9px monospace";
-    ctx.fillText(`L${level}`, lot.x + 6, lot.y + 12);
+    ctx.fillStyle = district.accent;
+    ctx.fillRect(lot.x + 2, lot.y + 2, lot.w - 4, 3);
+
+    if (nightAmount > 0.18) {
+      ctx.fillStyle = `rgba(255, 219, 122, ${0.16 + nightAmount * 0.62})`;
+      for (let wy = lot.y + 16; wy < lot.y + lot.h - 18; wy += 12) {
+        for (let wx = lot.x + 10; wx < lot.x + lot.w - 10; wx += 10) {
+          if (cityNoise(lotId * 311 + wx * 7 + wy * 13) > 0.56) {
+            ctx.fillRect(wx, wy, 4, 5);
+          }
+        }
+      }
+    }
+
+    const unitIncome = cityUnitIncome(unit);
+    ctx.fillStyle = "rgba(7, 15, 23, 0.82)";
+    ctx.fillRect(lot.x + 2, lot.y + 2, lot.w - 4, 12);
+    ctx.fillStyle = "#f6e7c9";
+    ctx.font = "bold 8px monospace";
+    ctx.fillText(`L${level} +$${unitIncome}`, lot.x + 4, lot.y + 10);
+
+    if (level >= 3) {
+      const bob = Math.sin(time * 1.6 + lotId) * 0.9;
+      const px = lot.x + 4 + ((time * 8 + lotId * 9) % Math.max(8, lot.w - 12));
+      const py = lot.y + lot.h + 2 + bob;
+      ctx.fillStyle = "#1a2330";
+      ctx.fillRect(px, py, 3, 6);
+      ctx.fillStyle = "#f0dbc1";
+      ctx.fillRect(px, py - 3, 3, 3);
+    }
   }
 
-  ctx.fillStyle = "rgba(12, 21, 30, 0.82)";
-  ctx.fillRect(8, 8, WORLD.viewW - 16, 42);
-  ctx.fillStyle = "#f5e6c7";
+  const drawCar = (x, y, horizontal, color) => {
+    ctx.fillStyle = "rgba(15, 21, 29, 0.44)";
+    if (horizontal) {
+      ctx.fillRect(x + 1, y + 7, 14, 2);
+    } else {
+      ctx.fillRect(x + 7, y + 1, 2, 14);
+    }
+    ctx.fillStyle = color;
+    if (horizontal) {
+      ctx.fillRect(x, y, 14, 7);
+      ctx.fillStyle = "#dbeafe";
+      ctx.fillRect(x + 3, y + 1, 4, 2);
+      ctx.fillRect(x + 8, y + 1, 3, 2);
+    } else {
+      ctx.fillRect(x, y, 7, 14);
+      ctx.fillStyle = "#dbeafe";
+      ctx.fillRect(x + 1, y + 3, 2, 4);
+      ctx.fillRect(x + 1, y + 8, 2, 3);
+    }
+  };
+
+  const loopW = blockW + 26;
+  const loopH = blockH + 26;
+  const topY = blockY + 1;
+  const bottomY = blockY + blockH - 9;
+  const leftX = blockX + 1;
+  const rightX = blockX + blockW - 9;
+  const topStartX = blockX - 13;
+  const leftStartY = blockY - 13;
+
+  const traffic = [
+    { axis: "x", y: topY, speed: 40, offset: 0, color: "#ef4444", dir: 1 },
+    { axis: "x", y: topY + 4, speed: 33, offset: 19, color: "#f59e0b", dir: 1 },
+    { axis: "x", y: bottomY, speed: 44, offset: 7, color: "#38bdf8", dir: -1 },
+    { axis: "x", y: bottomY - 4, speed: 36, offset: 33, color: "#22c55e", dir: -1 },
+    { axis: "y", x: leftX, speed: 35, offset: 11, color: "#fb7185", dir: 1 },
+    { axis: "y", x: leftX + 4, speed: 30, offset: 42, color: "#a78bfa", dir: 1 },
+    { axis: "y", x: rightX, speed: 38, offset: 17, color: "#14b8a6", dir: -1 }
+  ];
+  for (const lane of traffic) {
+    if (lane.axis === "x") {
+      const n = (time * lane.speed + lane.offset) % loopW;
+      const x = lane.dir > 0 ? topStartX + n : topStartX + (loopW - n);
+      drawCar(x, lane.y, true, lane.color);
+    } else {
+      const n = (time * lane.speed + lane.offset) % loopH;
+      const y = lane.dir > 0 ? leftStartY + n : leftStartY + (loopH - n);
+      drawCar(lane.x, y, false, lane.color);
+    }
+  }
+
+  // Pedestrians moving around perimeter sidewalks.
+  const walkerLoopW = blockW + 18;
+  const walkerLoopH = blockH + 18;
+  const walkers = [
+    { axis: "x", y: blockY - 6, speed: 12, offset: 0, dir: 1, tone: "#f2dcc1" },
+    { axis: "x", y: blockY + blockH + 2, speed: 11, offset: 23, dir: -1, tone: "#f0d6b7" },
+    { axis: "y", x: blockX - 6, speed: 10, offset: 17, dir: 1, tone: "#edd2b3" },
+    { axis: "y", x: blockX + blockW + 2, speed: 13, offset: 31, dir: -1, tone: "#efd8bc" }
+  ];
+  for (const walker of walkers) {
+    let wx = walker.x;
+    let wy = walker.y;
+    if (walker.axis === "x") {
+      const n = (time * walker.speed + walker.offset) % walkerLoopW;
+      wx = walker.dir > 0 ? blockX - 9 + n : blockX - 9 + (walkerLoopW - n);
+      wy = walker.y;
+    } else {
+      const n = (time * walker.speed + walker.offset) % walkerLoopH;
+      wx = walker.x;
+      wy = walker.dir > 0 ? blockY - 9 + n : blockY - 9 + (walkerLoopH - n);
+    }
+    ctx.fillStyle = "#20293a";
+    ctx.fillRect(wx + 1, wy + 2, 3, 5);
+    ctx.fillStyle = walker.tone;
+    ctx.fillRect(wx + 1, wy, 3, 3);
+  }
+
+  // Street lights and light cones.
+  if (nightAmount > 0.2) {
+    for (let i = 0; i <= CITY_GRID_COLS; i += 1) {
+      const lx = layout.x + i * stepX - CITY_GRID_GAP;
+      const lyTop = blockY - 2;
+      const lyBottom = blockY + blockH - 2;
+      ctx.fillStyle = "#2b2f37";
+      ctx.fillRect(lx, lyTop, 1.5, 9);
+      ctx.fillRect(lx, lyBottom - 8, 1.5, 9);
+      ctx.fillStyle = `rgba(255, 223, 153, ${nightAmount * 0.72})`;
+      ctx.fillRect(lx - 1, lyTop + 8, 4, 2);
+      ctx.fillRect(lx - 1, lyBottom - 10, 4, 2);
+      ctx.fillStyle = `rgba(255, 223, 153, ${nightAmount * 0.2})`;
+      ctx.beginPath();
+      ctx.arc(lx + 1, lyTop + 10, 8, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.beginPath();
+      ctx.arc(lx + 1, lyBottom - 8, 8, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+
+  ctx.fillStyle = "rgba(10, 16, 25, 0.86)";
+  ctx.fillRect(8, 8, WORLD.viewW - 16, 48);
+  ctx.fillStyle = "#f2e6cc";
   ctx.font = "bold 12px monospace";
-  ctx.fillText("MODO CIUDAD", 14, 24);
+  const phaseLabel = nightAmount > 0.42 ? "NOCHE" : nightAmount > 0.2 ? "ATARDECER" : "DIA";
+  ctx.fillText(`MODO CIUDAD | FRANQUICIAS | ${phaseLabel}`, 14, 24);
   ctx.font = "10px monospace";
-  ctx.fillText(`Unidades ${state.cityUnits.length}/${totalCityLots()}  Build $${getCityBuildCost()}`, 14, 40);
+  ctx.fillText(`Restaurantes ${state.cityUnits.length}/${totalCityLots()}  Construir $${getCityBuildCost()}`, 14, 40);
 
   const income = totalCityIncome();
-  ctx.fillStyle = "rgba(12, 21, 30, 0.86)";
-  ctx.fillRect(8, WORLD.viewH - 32, WORLD.viewW - 16, 22);
-  ctx.fillStyle = "#d9f4cf";
-  ctx.font = "10px monospace";
-  ctx.fillText(`Toca lote vacio para construir o unidad para mejorar. Ingreso/ciclo: $${income}`, 14, WORLD.viewH - 17);
+  ctx.fillStyle = "rgba(10, 16, 25, 0.88)";
+  ctx.fillRect(8, WORLD.viewH - 44, WORLD.viewW - 16, 34);
+  ctx.fillStyle = "#d8efcd";
+  ctx.font = "9px monospace";
+  ctx.fillText("Lote vacio: construir | Restaurante: mejorar", 14, WORLD.viewH - 31);
+  ctx.fillText(`Ingreso por ciclo: $${income}`, 14, WORLD.viewH - 18);
+
+  if (nightAmount > 0) {
+    ctx.fillStyle = `rgba(7, 13, 24, ${nightAmount * 0.58})`;
+    ctx.fillRect(0, 0, WORLD.viewW, WORLD.viewH);
+  }
 }
 
 function render() {
@@ -3893,6 +4251,7 @@ function tick(ts) {
 }
 
 function bootstrap() {
+  loadSprites();
   resizeCanvas();
   setCampaignChoice("usa");
   resetProgress("usa");

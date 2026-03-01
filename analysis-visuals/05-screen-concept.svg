@@ -1,0 +1,82 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="1400" height="900" viewBox="0 0 1400 900" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bg2" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#0f172a"/>
+      <stop offset="100%" stop-color="#1f2937"/>
+    </linearGradient>
+    <linearGradient id="phone" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#f8e8c6"/>
+      <stop offset="100%" stop-color="#f3c486"/>
+    </linearGradient>
+  </defs>
+  <rect width="1400" height="900" fill="url(#bg2)"/>
+
+  <text x="70" y="90" fill="#f8fafc" font-size="50" font-family="Arial, Helvetica, sans-serif" font-weight="700">
+    Visual Concept - Mobile First Screen
+  </text>
+
+  <rect x="420" y="120" width="560" height="730" rx="42" fill="#111827" stroke="#64748b" stroke-width="4"/>
+  <rect x="445" y="155" width="510" height="670" rx="22" fill="url(#phone)" stroke="#7c2d12" stroke-width="3"/>
+
+  <rect x="463" y="172" width="474" height="72" rx="12" fill="#fef3c7" stroke="#92400e" stroke-width="2"/>
+  <text x="490" y="200" fill="#7c2d12" font-size="20" font-family="Arial, Helvetica, sans-serif" font-weight="700">
+    MONEY $428
+  </text>
+  <text x="670" y="200" fill="#7c2d12" font-size="20" font-family="Arial, Helvetica, sans-serif" font-weight="700">
+    QUEUE 3/7
+  </text>
+  <text x="820" y="200" fill="#7c2d12" font-size="20" font-family="Arial, Helvetica, sans-serif" font-weight="700">
+    DAY 6
+  </text>
+  <text x="490" y="226" fill="#1f2937" font-size="16" font-family="Arial, Helvetica, sans-serif">
+    Next milestone: Unlock Zone 2 in 1 upgrade
+  </text>
+
+  <rect x="463" y="258" width="474" height="420" rx="14" fill="#d6b889" stroke="#7c2d12" stroke-width="2"/>
+  <rect x="485" y="286" width="120" height="72" fill="#d0503a"/>
+  <rect x="625" y="286" width="120" height="72" fill="#f0cc5a"/>
+  <rect x="765" y="286" width="140" height="72" fill="#2d72a5"/>
+  <rect x="485" y="612" width="420" height="40" fill="#2f8742"/>
+  <circle cx="700" cy="470" r="18" fill="#1e3a8a"/>
+  <rect x="692" y="488" width="16" height="22" fill="#ef4444"/>
+
+  <rect x="463" y="692" width="474" height="56" rx="12" fill="#111827" opacity="0.85"/>
+  <text x="485" y="726" fill="#fef3c7" font-size="20" font-family="Arial, Helvetica, sans-serif">
+    Suggested action: Bake pizza for Order #14 (high tip)
+  </text>
+
+  <rect x="463" y="760" width="474" height="50" rx="14" fill="#0f172a" stroke="#334155" stroke-width="2"/>
+  <rect x="490" y="774" width="98" height="24" rx="12" fill="#16a34a"/>
+  <rect x="608" y="774" width="98" height="24" rx="12" fill="#ef4444"/>
+  <rect x="726" y="774" width="98" height="24" rx="12" fill="#eab308"/>
+  <rect x="844" y="774" width="66" height="24" rx="12" fill="#3b82f6"/>
+  <text x="520" y="791" fill="#f8fafc" font-size="13" font-family="Arial, Helvetica, sans-serif" font-weight="700">DOUGH</text>
+  <text x="641" y="791" fill="#f8fafc" font-size="13" font-family="Arial, Helvetica, sans-serif" font-weight="700">SAUCE</text>
+  <text x="756" y="791" fill="#111827" font-size="13" font-family="Arial, Helvetica, sans-serif" font-weight="700">CHEESE</text>
+  <text x="863" y="791" fill="#f8fafc" font-size="13" font-family="Arial, Helvetica, sans-serif" font-weight="700">SERVE</text>
+
+  <line x1="260" y1="222" x2="445" y2="222" stroke="#22c55e" stroke-width="3"/>
+  <text x="70" y="208" fill="#bbf7d0" font-size="24" font-family="Arial, Helvetica, sans-serif" font-weight="700">
+    Priority ribbon replaces tiny HUD cards
+  </text>
+  <text x="70" y="240" fill="#e5e7eb" font-size="18" font-family="Arial, Helvetica, sans-serif">
+    Big numbers + one next objective keeps players focused.
+  </text>
+
+  <line x1="1030" y1="726" x2="937" y2="726" stroke="#60a5fa" stroke-width="3"/>
+  <text x="1040" y="710" fill="#bfdbfe" font-size="24" font-family="Arial, Helvetica, sans-serif" font-weight="700">
+    Context hint
+  </text>
+  <text x="1040" y="742" fill="#e5e7eb" font-size="18" font-family="Arial, Helvetica, sans-serif">
+    Always explains the best next move.
+  </text>
+
+  <line x1="280" y1="790" x2="463" y2="790" stroke="#f59e0b" stroke-width="3"/>
+  <text x="70" y="786" fill="#fde68a" font-size="24" font-family="Arial, Helvetica, sans-serif" font-weight="700">
+    Thumb action dock
+  </text>
+  <text x="70" y="818" fill="#e5e7eb" font-size="18" font-family="Arial, Helvetica, sans-serif">
+    One tap can complete the full pizza chain.
+  </text>
+</svg>
